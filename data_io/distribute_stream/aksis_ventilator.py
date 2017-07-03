@@ -60,7 +60,7 @@ class AksisDataVentilatorProcess(Process):
             data_stream = self.get_data_stream()
         except FileNotFoundError as e:
             return
-        for i in xrange(self.num_epoch):
+        for i in range(self.num_epoch):
             for data in data_stream:
                 sender.send_pyobj(data)
                 metric.notify(1)

@@ -33,7 +33,7 @@ class AksisDataReceiver(object):
         return self
 
     @with_meter('aksis_data_receiver', interval=30)
-    def next(self):
+    def __next__(self):
         """return the data from collector"""
         if 0 < self.stop_freq < self.num:
             raise StopIteration

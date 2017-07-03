@@ -105,7 +105,7 @@ class VocabularyFromLocalFile(VocabularyBase):
                             print("  processing line %d" % num)
                         try:
                             tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
-                        except Exception, e:
+                        except Exception as e:
                             print("Tokenize failure: " + line)
                             continue
                         for word in tokens:
@@ -174,7 +174,7 @@ class VocabFromZMQ(VocabularyBase):
         v = VentilatorProcess(corpus_files, self.ip, self.ventilator_port, sentence_gen=self.sentence_gen)
         v.start()
         process_pool.append(v)
-        for i in xrange(self.workers_num):
+        for i in range(self.workers_num):
             w = WorkerProcess(self.ip, self.ventilator_port, self.collector_port, name='WorkerProcess_{}'.format(i))
             w.start()
             process_pool.append(w)

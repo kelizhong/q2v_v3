@@ -86,7 +86,7 @@ class AksisDataPipeline(object):
 
     def start_parser_worker_process(self):
         """start the parser worker process which tokenize the copus data and convert them to id"""
-        for i in xrange(self.worker_num):
+        for i in range(self.worker_num):
             worker = AksisParserWorker(self.ip, self.vocabulary_path, self.top_words, batch_size=self.batch_size,
                                        frontend_port=self.raw_data_backend_port,
                                        backend_port=self.collector_fronted_port,

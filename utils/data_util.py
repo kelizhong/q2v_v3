@@ -8,7 +8,7 @@ import random
 from nltk import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from utils.pickle_util import load_pickle_object, save_obj_pickle
-from cache import RandomSet
+from utils.cache import RandomSet
 from enum import Enum, unique
 from collections import Counter
 import numpy as np
@@ -326,7 +326,7 @@ def build_words_frequency_counter(vocabulary_data_dir, data_path, tokenizer=None
                         print("  processing line %d" % counter)
                     try:
                         tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
-                    except Exception, e:
+                    except Exception as e:
                         print("Tokenize failure: " + line)
                         continue
                     for word in tokens:
