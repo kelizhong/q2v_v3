@@ -14,8 +14,8 @@ class BatchDataHandler(object):
         return len(self._sources)
 
     def parse_and_insert_data_object(self, source, target, label=1):
-        source_tokens = trigram_encoding(source, self.vocabulary)
-        target_tokens = trigram_encoding(target, self.vocabulary)
+        source_tokens = trigram_encoding(source, self.vocabulary, self.source_max_seq_length)
+        target_tokens = trigram_encoding(target, self.vocabulary, self.target_max_seq_length)
         data_object = self.insert_data_object(source_tokens, target_tokens, label)
         return data_object
 

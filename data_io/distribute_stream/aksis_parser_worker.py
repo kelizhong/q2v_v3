@@ -7,7 +7,6 @@ import pickle
 # pylint: disable=ungrouped-imports
 import zmq
 from utils.decorator_util import memoized
-from utils.data_util import trigram_encoding
 from vocabulary.vocab import VocabularyFromCustomStringTrigram
 from zmq.eventloop import ioloop
 from zmq.eventloop.zmqstream import ZMQStream

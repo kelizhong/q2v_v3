@@ -33,8 +33,7 @@ tf.app.flags.DEFINE_integer("tgt_cell_size", 96,
 tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("max_vocabulary_size", 64001, "Sequence vocabulary size in the mapping task.")
 
-tf.app.flags.DEFINE_integer("source_max_seq_length", 30, "max number of words in each source or target sequence.")
-tf.app.flags.DEFINE_integer("target_max_seq_length", 100, "max number of words in each source or target sequence.")
+
 tf.app.flags.DEFINE_integer("max_epoch", 8, "max epoc number for training procedure.")
 tf.app.flags.DEFINE_integer("predict_nbest", 20, "max top N for evaluation prediction.")
 
@@ -102,6 +101,8 @@ tf.app.flags.DEFINE_boolean('allow_soft_placement', True, 'Allow device soft pla
 tf.app.flags.DEFINE_boolean('log_device_placement', False, 'Log placement of ops on devices')
 
 tf.app.flags.DEFINE_integer("data_stream_port", None, "port for data zmq stream")
+tf.app.flags.DEFINE_integer("source_max_seq_length", 30, "max number of words in each source or target sequence.")
+tf.app.flags.DEFINE_integer("target_max_seq_length", 100, "max number of words in each source or target sequence.")
 
 
 FLAGS = tf.app.flags.FLAGS
