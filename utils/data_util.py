@@ -410,7 +410,7 @@ def find_ngrams(input_list, n):
     return zip(*[input_list[i:] for i in range(n)])
 
 
-def trigram_encoding(data, trigram_dict):
+def trigram_encoding(data, trigram_dict, max_len):
     data = re.sub('[^a-z0-9.&\\ ]+', '', data.lower())
     data_seq = data.split()
     if len(data_seq) <= 2:  # remove query that are shorter than 3 words
@@ -419,6 +419,7 @@ def trigram_encoding(data, trigram_dict):
 
     data_triagrams = list(chain(*[find_ngrams("#" + qw + "#", 3) for qw in data_seq]))
     data_triagrams_index = [trigram_dict[d] if d in trigram_dict else len(trigram_dict) + 1 for d in data_triagrams]
+    data_triagrams_index = data_triagrams_index[0:max_len]
     return data_triagrams_index
 
 
