@@ -12,9 +12,6 @@ from tensorflow.python.ops.rnn_cell import MultiRNNCell
 from tensorflow.python.ops.rnn_cell import DropoutWrapper, ResidualWrapper
 
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.layers.core import Dense
 from tensorflow.python.util import nest
 
@@ -37,6 +34,7 @@ class Seq2SeqModel(object):
         self.depth = config['depth']
         self.attention_type = config['attention_type']
         self.embedding_size = config['embedding_size']
+        # TODO add bidirectional support
         # self.bidirectional = config.bidirectional
 
         self.num_encoder_symbols = config['num_encoder_symbols']
@@ -74,6 +72,7 @@ class Seq2SeqModel(object):
         self.build_decoder()
 
     def init_placeholders(self):
+        # TODO use MutableHashTable to store word->id mapping in checkpoint
         # encoder_inputs: [batch_size, max_time_steps]
         self.encoder_inputs = tf.placeholder(dtype=tf.int32,
                                              shape=(None, None), name='encoder_inputs')
@@ -291,7 +290,7 @@ class Seq2SeqModel(object):
 
     def build_single_cell(self):
         cell_type = LSTMCell
-        if (self.cell_type.lower() == 'gru'):
+        if self.cell_type.lower() == 'gru':
             cell_type = GRUCell
         cell = cell_type(self.hidden_units)
 
@@ -306,7 +305,7 @@ class Seq2SeqModel(object):
     # Building encoder cell
     def build_encoder_cell(self):
 
-        return MultiRNNCell([self.build_single_cell() for i in range(self.depth)])
+        return MultiRNNCell([self.build_single_cell() for _ in range(self.depth)])
 
     # Building decoder cell and attention. Also returns decoder_initial_state
     def build_decoder_cell(self):
@@ -339,7 +338,7 @@ class Seq2SeqModel(object):
 
         # Building decoder_cell
         self.decoder_cell_list = [
-            self.build_single_cell() for i in range(self.depth)]
+            self.build_single_cell() for _ in range(self.depth)]
         decoder_initial_state = encoder_last_state
 
         def attn_decoder_input_fn(inputs, attention):

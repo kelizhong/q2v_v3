@@ -101,7 +101,7 @@ tf.app.flags.DEFINE_boolean('use_fp16', False, 'Use half precision float16 inste
 tf.app.flags.DEFINE_boolean('allow_soft_placement', True, 'Allow device soft placement')
 tf.app.flags.DEFINE_boolean('log_device_placement', False, 'Log placement of ops on devices')
 
-tf.app.flags.DEFINE_integer("data_stream_port", None, "port for data zmq stream")
+tf.app.flags.DEFINE_integer("data_stream_port", 5558, "port for data zmq stream")
 
 
 FLAGS = tf.app.flags.FLAGS

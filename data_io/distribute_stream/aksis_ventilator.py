@@ -58,7 +58,7 @@ class AksisDataVentilatorProcess(Process):
         metric = AppMetric(name=self.name, interval=self.metric_interval)
         try:
             data_stream = self.get_data_stream()
-        except FileNotFoundError, e:
+        except FileNotFoundError as e:
             return
         for i in xrange(self.num_epoch):
             for data in data_stream:

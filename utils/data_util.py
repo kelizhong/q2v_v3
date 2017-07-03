@@ -425,7 +425,7 @@ def trigram_encoding(data, trigram_dict):
 def trigram_sentence_to_padding_index(sentence, trigram_dict, maxlen):
     try:
         index = trigram_encoding(sentence, trigram_dict)
-    except Exception, e:
+    except Exception as e:
         return 0, []
     original_len = min(len(index), maxlen)
     index = pad_sequences(np.array([index]), padding='post', truncating='post', maxlen=maxlen)

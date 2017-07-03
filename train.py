@@ -108,13 +108,9 @@ class Trainer(object):
     @property
     def data_local_stream(self):
         data_stream = AksisDataStream(self.vocabulary_data_dir, top_words=self.top_words,
-                                      special_words=self.special_words, source_max_seq_length=self.source_max_seq_length, target_max_seq_length=self.target_max_seq_length,
+                                      source_max_seq_length=self.source_max_seq_length, target_max_seq_length=self.target_max_seq_length,
                                       batch_size=self.batch_size,
                                       raw_data_path=self.raw_data_path).generate_batch_data()
-        data_stream = AksisDataStream(vocabulary_data_dir='./data/vocabulary', batch_size=FLAGS.batch_size,
-                                    special_words=dict(),
-                                    top_words=sys.maxsize, source_max_seq_length=30, target_max_seq_length=40,
-                                    raw_data_path='./data/rawdata/test.add').generate_batch_data()
         return data_stream
 
     @property
@@ -171,7 +167,6 @@ class Trainer(object):
                 words_done, sents_done = 0, 0
                 data_stream = self.data_stream
                 for sources, targets in data_stream:
-                    print(sources)
                     start_time = time.time()
                     sources, source_lens, targets, target_lens = prepare_train_batch(sources, targets,
                                                                                  FLAGS.max_seq_length)
@@ -184,7 +179,7 @@ class Trainer(object):
                     step_loss = model.train(sess, encoder_inputs=sources, encoder_inputs_length=source_lens,
                                             decoder_inputs=targets, decoder_inputs_length=target_lens)
                     time_elapsed = time.time() - start_time
-                    step_time += time_elapsed / self.steps_per_checkpoint
+                    step_time = time_elapsed / self.steps_per_checkpoint
                     loss += step_loss / self.steps_per_checkpoint
                     words_done += float(np.sum(source_lens + target_lens))
                     sents_done += float(sources.shape[0])  # batch_size
@@ -192,6 +187,8 @@ class Trainer(object):
                     # loss_summary = tf.Summary(value=[tf.Summary.Value(tag="loss", simple_value=loss)])
                     # sw.add_summary(loss_summary, current_step)
                     # Once in a while, print statistics, and run evals.
+                    # Increase the epoch index of the model
+                    model.global_epoch_step_op.eval()
                     if model.global_step.eval() % self.steps_per_checkpoint == 0:
                         avg_perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
                         words_per_sec = words_done / time_elapsed
