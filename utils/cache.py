@@ -2,6 +2,7 @@ import random
 
 
 class RandomSet(object):
+    """random set cache"""
     def __init__(self, capacity=1024):
         self.capacity = capacity
         self.set = set()
@@ -10,11 +11,13 @@ class RandomSet(object):
         return len(self.set)
 
     def add(self, item):
+        """add item and remove one item if set size reach capacity """
         if self.__len__() > self.capacity:
             self.pop()
         self.set.add(item)
 
     def get_n_items(self, n):
+        """return n items"""
         return random.sample(self.set, n if self.__len__() > n else self.__len__())
 
     def pop(self):

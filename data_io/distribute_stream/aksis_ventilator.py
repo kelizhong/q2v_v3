@@ -9,7 +9,9 @@ import zmq
 from zmq.decorators import socket
 from utils.appmetric_util import AppMetric
 from utils.data_util import negative_sampling_train_data_generator
-from exception.file_exception import FileNotFoundError
+
+
+# from exception.file_exception import FileNotFoundError
 
 
 class AksisDataVentilatorProcess(Process):
@@ -35,7 +37,7 @@ class AksisDataVentilatorProcess(Process):
     """
 
     def __init__(self, file_pattern, data_dir,
-                 num_epoch=65535, dropout=-1, ip='127.0.0.1', port='5555',
+                 num_epoch=65535, dropout=-1, ip='127.0.0.1', port=5555,
                  metric_interval=30, neg_number=5, name='VentilatorProcess'):
         Process.__init__(self)
         self.file_pattern = file_pattern
@@ -73,8 +75,9 @@ class AksisDataVentilatorProcess(Process):
 
         if len(data_files) <= 0:
             raise FileNotFoundError("no files are found for file pattern {} in {}".format(self.file_pattern,
-                                                                                                  self.data_dir))
+                                                                                          self.data_dir))
         action_files = [os.path.join(self.data_dir, filename) for filename in data_files]
 
-        for source, target, label in negative_sampling_train_data_generator(action_files, self.neg_number, self.dropout):
+        for source, target, label in negative_sampling_train_data_generator(action_files, self.neg_number,
+                                                                            self.dropout):
             yield source, target, label

@@ -20,7 +20,7 @@ class VentilatorProcess(Process):
         ip: str
             the ip address string without the port to pass to ``Socket.bind()``.
         port: int
-            port for s]the sender socket
+            port for the sender socket
         sentence_gen: generator
             generator which produce the sentence in corpus data
         name: str

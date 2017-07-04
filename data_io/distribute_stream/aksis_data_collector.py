@@ -21,8 +21,6 @@ class AksisDataCollector(Process):
     ----------
         ip : str
             The ip address string without the port to pass to ``Socket.bind()``.
-        buckets: tuple list
-            The buckets for seq2seq model, a list with (encoder length, decoder length)
         batch_size: int
             Batch size for each databatch
         frontend_port: int
@@ -62,10 +60,10 @@ class AksisDataCollector(Process):
         pull_stream = ZMQStream(receiver, loop)
 
         def _on_recv(msg):
-            # accept the msg and add to the bucket queue and send the batch data to trainer
-            # encoder_sentence_id for query in aksis data
-            # decoder_sentence_id for title in aksis data
-            source_tokens, target_tokens = pickle.loads(msg[0])
+            # accept the msg and add it to the queue and send the batch data to trainer
+            # source_tokens for query in aksis data
+            # target_tokens for title in aksis data
+            source_tokens, target_tokens, _ = pickle.loads(msg[0])
             # add the data from parser worker, and get data from the batch queue
             if len(source_tokens) == self.batch_size:
                 sender.send_pyobj((source_tokens, target_tokens))

@@ -34,7 +34,7 @@ class WorkerProcess(Process):
         self.name = name
 
     @retry(lambda x: x.tries, exception=zmq.ZMQError, name='worker_parser', report=logging.error)
-    @with_meter('worker_parser', interval=30)
+    @with_meter('worker_parser', interval=120)
     def _on_recv(self, receiver):
         sentence = receiver.recv_string(zmq.NOBLOCK)
         return sentence

@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 import math
 
-import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.seq2seq as seq2seq
 
@@ -19,6 +18,8 @@ from tensorflow.contrib.seq2seq.python.ops import attention_wrapper
 from tensorflow.contrib.seq2seq.python.ops import beam_search_decoder
 
 from config.config import start_token, end_token
+
+from external.optimizer.cocob_optimizer import COCOB
 
 
 class Seq2SeqModel(object):
@@ -317,7 +318,7 @@ class Seq2SeqModel(object):
         # To use BeamSearchDecoder, encoder_outputs, encoder_last_state, encoder_inputs_length
         # needs to be tiled so that: [batch_size, .., ..] -> [batch_size x beam_width, .., ..]
         if self.use_beamsearch_decode:
-            print ("use beamsearch decoding..")
+            print("use beamsearch decoding..")
             encoder_outputs = seq2seq.tile_batch(
                 self.encoder_outputs, multiplier=self.beam_width)
             encoder_last_state = nest.map_structure(
@@ -387,6 +388,8 @@ class Seq2SeqModel(object):
             self.opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         elif self.optimizer.lower() == 'rmsprop':
             self.opt = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
+        elif self.optimizer.lower() == 'cocob':
+            self.opt = COCOB()
         else:
             self.opt = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
 
@@ -419,7 +422,7 @@ class Seq2SeqModel(object):
               decoder_inputs, decoder_inputs_length):
         """Run a train step of the model feeding the given inputs.
         Args:
-          session: tensorflow session to use.
+          sess: tensorflow session to use.
           encoder_inputs: a numpy int matrix of [batch_size, max_source_time_steps]
               to feed as encoder inputs
           encoder_inputs_length: a numpy int vector of [batch_size]
@@ -451,7 +454,7 @@ class Seq2SeqModel(object):
              decoder_inputs, decoder_inputs_length):
         """Run a evaluation step of the model feeding the given inputs.
         Args:
-          session: tensorflow session to use.
+          sess: tensorflow session to use.
           encoder_inputs: a numpy int matrix of [batch_size, max_source_time_steps]
               to feed as encoder inputs
           encoder_inputs_length: a numpy int vector of [batch_size]

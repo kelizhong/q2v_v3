@@ -1,9 +1,10 @@
+from collections import OrderedDict
+
 import logbook as logging
 import tensorflow as tf
 
 from config.config import FLAGS
-from collections import OrderedDict
-from seq2seq import Seq2SeqModel
+from model.seq2seq import Seq2SeqModel
 
 
 def create_model(session, flags_config):

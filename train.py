@@ -17,7 +17,6 @@ CUDA_VISIBLE_DEVICES=0 python train.py --gpu 0
 """
 
 from __future__ import print_function
-import sys
 import time
 
 import logbook as logging
@@ -39,8 +38,8 @@ from utils.data_util import prepare_train_batch
 
 class Trainer(object):
     def __init__(self, job_name, ps_hosts, worker_hosts, task_index, gpu, model_dir, is_sync, raw_data_path, batch_size,
-                 steps_per_checkpoint,
-                 source_max_seq_length=None, target_max_seq_length=None, special_words=None, top_words=None, vocabulary_data_dir=None, port=None):
+                 steps_per_checkpoint, source_maxlen=None, target_maxlen=None, special_words=None, top_words=None,
+                 vocabulary_data_dir=None, port=None):
         self.job_name = job_name
         self.ps_hosts = ps_hosts.split(",")
         self.worker_hosts = worker_hosts.split(",")
@@ -51,8 +50,8 @@ class Trainer(object):
         self.raw_data_path = raw_data_path
         self.steps_per_checkpoint = steps_per_checkpoint
         self.batch_size = batch_size
-        self.source_max_seq_length = source_max_seq_length
-        self.target_max_seq_length = target_max_seq_length
+        self.source_maxlen = source_maxlen
+        self.target_maxlen = target_maxlen
         self.special_words = special_words
         self.top_words = top_words
         self.vocabulary_data_dir = vocabulary_data_dir
@@ -108,7 +107,7 @@ class Trainer(object):
     @property
     def data_local_stream(self):
         data_stream = AksisDataStream(self.vocabulary_data_dir, top_words=self.top_words,
-                                      source_max_seq_length=self.source_max_seq_length, target_max_seq_length=self.target_max_seq_length,
+                                      source_maxlen=self.source_maxlen, target_maxlen=self.target_maxlen,
                                       batch_size=self.batch_size,
                                       raw_data_path=self.raw_data_path).generate_batch_data()
         return data_stream
@@ -137,7 +136,8 @@ class Trainer(object):
         else:
             with tf.device(self.device):
                 with tf.Session(target=self.master,
-                                config=tf.ConfigProto(allow_soft_placement=FLAGS.allow_soft_placement, log_device_placement=FLAGS.log_device_placement,)) as sess:
+                                config=tf.ConfigProto(allow_soft_placement=FLAGS.allow_soft_placement,
+                                                      log_device_placement=FLAGS.log_device_placement, )) as sess:
                     model = create_model(sess, FLAGS)
                 self._log_variable_info()
                 summary_op = tf.summary.merge_all()
@@ -158,7 +158,6 @@ class Trainer(object):
                 # setup tensorboard logging
                 # sw = tf.summary.FileWriter(FLAGS.model_dir, sess.graph, flush_secs=120)
 
-                # 如果是同步模式
                 if self.task_index == 0 and self.is_sync:
                     sv.start_queue_runners(sess, [model.chief_queue_runner])
                     sess.run(model.init_token_op)
@@ -169,7 +168,7 @@ class Trainer(object):
                 for sources, targets in data_stream:
                     start_time = time.time()
                     sources, source_lens, targets, target_lens = prepare_train_batch(sources, targets,
-                                                                                 FLAGS.max_seq_length)
+                                                                                     FLAGS.max_seq_length)
                     # Get a batch from training parallel data
                     if sources is None or targets is None:
                         logging.warn('No samples under max_seq_length {}', FLAGS.max_seq_length)
@@ -193,8 +192,10 @@ class Trainer(object):
                         avg_perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
                         words_per_sec = words_done / time_elapsed
                         sents_per_sec = sents_done / time_elapsed
-                        logging.info("global step %d, learning rate %.4f, step-time:%.2f, step-loss:%.4f, loss:%.4f, perplexity:%.4f, %.4f sents/s, %.4f words/s" %
-                                     (model.global_step.eval(), model.learning_rate, step_time, step_loss, loss, avg_perplexity, sents_per_sec, words_per_sec))
+                        logging.info(
+                            "global step %d, learning rate %.4f, step-time:%.2f, step-loss:%.4f, loss:%.4f, perplexity:%.4f, %.4f sents/s, %.4f words/s" %
+                            (model.global_step.eval(), model.learning_rate, step_time, step_loss, loss, avg_perplexity,
+                             sents_per_sec, words_per_sec))
                         # set zero timer and loss.
                         words_done, sents_done, loss = 0.0, 0.0, 0.0
 
@@ -205,7 +206,8 @@ def main(_):
     setup_logger(FLAGS.log_file_name)
     trainer = Trainer(special_words=dict(), raw_data_path=FLAGS.raw_data_path,
                       vocabulary_data_dir=FLAGS.vocabulary_data_dir,
-                      port=FLAGS.data_stream_port, top_words=FLAGS.max_vocabulary_size, source_max_seq_length=FLAGS.source_max_seq_length, target_max_seq_length=FLAGS.target_max_seq_length,
+                      port=FLAGS.data_stream_port, top_words=FLAGS.max_vocabulary_size,
+                      source_maxlen=FLAGS.source_maxlen, target_maxlen=FLAGS.target_maxlen,
                       job_name=FLAGS.job_name,
                       ps_hosts=FLAGS.ps_hosts, worker_hosts=FLAGS.worker_hosts, task_index=FLAGS.task_index,
                       gpu=FLAGS.gpu,

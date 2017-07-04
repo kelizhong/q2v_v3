@@ -3,14 +3,6 @@ import tensorflow as tf
 
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
 
-"""constant value"""
-bos_word = '<s>'  # begin of sentence
-eos_word = '</s>'  # end of sentence
-unk_word = '<unk>'  # unknown word
-pad_word = '<pad>'  # pad word
-
-# Special vocabulary symbols - we always put them at the start.
-special_words = {pad_word: 0, unk_word: 1, bos_word: 2, eos_word: 3}
 # Extra vocabulary symbols
 _GO = '_GO'
 EOS = '_EOS' # also function as PAD
@@ -62,9 +54,6 @@ tf.app.flags.DEFINE_string("job_name", "single", "One of 'ps', 'worker'")
 tf.app.flags.DEFINE_integer("task_index", 0, "Index of task within the job")
 tf.app.flags.DEFINE_boolean("is_sync", False, "")
 
-
-
-
 # Network parameters
 tf.app.flags.DEFINE_string('cell_type', 'lstm', 'RNN cell for encoder and decoder, default: lstm')
 tf.app.flags.DEFINE_string('attention_type', 'bahdanau', 'Attention mechanism: (bahdanau, luong), default: bahdanau')
@@ -89,7 +78,7 @@ tf.app.flags.DEFINE_integer('max_seq_length', 50, 'Maximum sequence length')
 tf.app.flags.DEFINE_integer('display_freq', 1, 'Display training status every this iteration')
 tf.app.flags.DEFINE_integer('save_freq', 11500, 'Save model checkpoint every this iteration')
 tf.app.flags.DEFINE_integer('valid_freq', 1150000, 'Evaluate model every this iteration: valid_data needed')
-tf.app.flags.DEFINE_string('optimizer', 'adam', 'Optimizer for training: (adadelta, adam, rmsprop)')
+tf.app.flags.DEFINE_string('optimizer', 'cocob', 'Optimizer for training: (adadelta, adam, rmsprop, cocob)')
 tf.app.flags.DEFINE_string("model_dir", 'data/models', "Trained model directory.")
 tf.app.flags.DEFINE_string('model_name', 'translate.ckpt', 'File name used for model checkpoints')
 tf.app.flags.DEFINE_boolean('shuffle_each_epoch', True, 'Shuffle training dataset for each epoch')
@@ -101,8 +90,8 @@ tf.app.flags.DEFINE_boolean('allow_soft_placement', True, 'Allow device soft pla
 tf.app.flags.DEFINE_boolean('log_device_placement', False, 'Log placement of ops on devices')
 
 tf.app.flags.DEFINE_integer("data_stream_port", None, "port for data zmq stream")
-tf.app.flags.DEFINE_integer("source_max_seq_length", 30, "max number of words in each source or target sequence.")
-tf.app.flags.DEFINE_integer("target_max_seq_length", 100, "max number of words in each source or target sequence.")
+tf.app.flags.DEFINE_integer("source_maxlen", 30, "max number of words in each source sequence.")
+tf.app.flags.DEFINE_integer("target_maxlen", 100, "max number of words in each target sequence.")
 
 
 FLAGS = tf.app.flags.FLAGS

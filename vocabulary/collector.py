@@ -25,7 +25,7 @@ class CollectorProcess(object):
 
     @retry(lambda x: x.tries, exception=zmq.ZMQError,
            name="vocabulary_collector", report=logging.error)
-    @with_meter('vocabulary_collector', interval=30)
+    @with_meter('vocabulary_collector', interval=120)
     def _on_recv(self, receiver):
         words = receiver.recv_pyobj(zmq.NOBLOCK)
         return words
