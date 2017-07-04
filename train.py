@@ -38,7 +38,7 @@ from utils.data_util import prepare_train_batch
 
 class Trainer(object):
     def __init__(self, job_name, ps_hosts, worker_hosts, task_index, gpu, model_dir, is_sync, raw_data_path, batch_size,
-                 steps_per_checkpoint, source_maxlen=None, target_maxlen=None, special_words=None, top_words=None,
+                 display_freq, source_maxlen=None, target_maxlen=None, special_words=None, top_words=None,
                  vocabulary_data_dir=None, port=None):
         self.job_name = job_name
         self.ps_hosts = ps_hosts.split(",")
@@ -48,7 +48,7 @@ class Trainer(object):
         self.model_dir = model_dir
         self.is_sync = is_sync
         self.raw_data_path = raw_data_path
-        self.steps_per_checkpoint = steps_per_checkpoint
+        self.display_freq = display_freq
         self.batch_size = batch_size
         self.source_maxlen = source_maxlen
         self.target_maxlen = target_maxlen
@@ -167,8 +167,7 @@ class Trainer(object):
                 data_stream = self.data_stream
                 for sources, targets in data_stream:
                     start_time = time.time()
-                    sources, source_lens, targets, target_lens = prepare_train_batch(sources, targets,
-                                                                                     FLAGS.max_seq_length)
+                    sources, source_lens, targets, target_lens = prepare_train_batch(sources, targets)
                     # Get a batch from training parallel data
                     if sources is None or targets is None:
                         logging.warn('No samples under max_seq_length {}', FLAGS.max_seq_length)
@@ -178,8 +177,8 @@ class Trainer(object):
                     step_loss = model.train(sess, encoder_inputs=sources, encoder_inputs_length=source_lens,
                                             decoder_inputs=targets, decoder_inputs_length=target_lens)
                     time_elapsed = time.time() - start_time
-                    step_time = time_elapsed / self.steps_per_checkpoint
-                    loss += step_loss / self.steps_per_checkpoint
+                    step_time = time_elapsed / self.display_freq
+                    loss += step_loss / self.display_freq
                     words_done += float(np.sum(source_lens + target_lens))
                     sents_done += float(sources.shape[0])  # batch_size
 
@@ -188,7 +187,7 @@ class Trainer(object):
                     # Once in a while, print statistics, and run evals.
                     # Increase the epoch index of the model
                     model.global_epoch_step_op.eval()
-                    if model.global_step.eval() % self.steps_per_checkpoint == 0:
+                    if model.global_step.eval() % self.display_freq == 0:
                         avg_perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
                         words_per_sec = words_done / time_elapsed
                         sents_per_sec = sents_done / time_elapsed
@@ -212,7 +211,7 @@ def main(_):
                       ps_hosts=FLAGS.ps_hosts, worker_hosts=FLAGS.worker_hosts, task_index=FLAGS.task_index,
                       gpu=FLAGS.gpu,
                       model_dir=FLAGS.model_dir, is_sync=FLAGS.is_sync, batch_size=FLAGS.batch_size,
-                      steps_per_checkpoint=FLAGS.steps_per_checkpoint)
+                      display_freq=FLAGS.display_freq)
     trainer.train()
 
 
