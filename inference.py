@@ -17,6 +17,10 @@ class Inference(object):
         self.sess = tf.Session()
         self.model = self._init_model()
         self.batch_data = BatchDataTrigramHandler(self.vocabulary, source_maxlen=FLAGS.source_maxlen, target_maxlen=FLAGS.target_maxlen, batch_size=sys.maxsize)
+        model_path = os.path.join(FLAGS.model_dir, "embedding")
+        metadata_path = os.path.join(model_path, 'metadata.csv')
+        self.metadata_file = open(metadata_path, "wb")
+        self.batch_size = 2048
 
     def _init_model(self):
         model = create_model(self.sess, FLAGS, mode='encode')
@@ -49,19 +53,23 @@ class Inference(object):
                 sources.add(line)
         metadata_path = embed.metadata_path
 
-        sources_list = []
+        sources_dict = dict()
         embedding_list = []
         # the left over elements that would be truncated by zip
-        for each in zip(*[iter(sources)]*2):
+        count = 0
+        for each in zip(*[iter(sources)]*self.batch_size):
             batch_sources, result = self.encode(each)
             if result is not None:
-                sources_list.extend(batch_sources)
+                for source in batch_sources:
+                    sources_dict[source] = len(sources_dict)
                 embedding_list.append(result)
+                count += self.batch_size
+                print("Finished: %d" % count)
 
         with open(metadata_path, 'w+') as item_file:
             item_file.write('id\tchar\n')
-            for i, each in enumerate(sources_list):
-                item_file.write('{}\t{}\n'.format(i, each))
+            for source, index in sources_dict.items():
+                item_file.write('{}\t{}\n'.format(index, source))
             print('metadata file created')
 
         concat = np.concatenate(embedding_list, axis=0)
@@ -80,6 +88,6 @@ class Inference(object):
         return vocab
 
 i = Inference()
-i.batch_encode('source')
+i.batch_encode('titles')
 #v = i.encode(["nike shoe men", "apple mac mini"])
 #print(cos_distance(v[0], v[1]))
