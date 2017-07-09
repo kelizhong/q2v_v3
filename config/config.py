@@ -93,6 +93,8 @@ tf.app.flags.DEFINE_integer("data_stream_port", None, "port for data zmq stream"
 tf.app.flags.DEFINE_integer("source_maxlen", 30, "max number of words in each source sequence.")
 tf.app.flags.DEFINE_integer("target_maxlen", 100, "max number of words in each target sequence.")
 
+tf.app.flags.DEFINE_integer("beam_width", 0, "beam width")
+tf.app.flags.DEFINE_integer("max_decode_step", 3, "max_decode_step")
 
 FLAGS = tf.app.flags.FLAGS
 ps_hosts = FLAGS.ps_hosts.split(",")

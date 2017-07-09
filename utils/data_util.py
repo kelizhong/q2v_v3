@@ -219,6 +219,8 @@ def find_ngrams(input_list, n):
 
 
 def trigram_encoding(data, trigram_dict, max_len):
+    if not data:
+        return []
     data = re.sub('[^a-z0-9.&\\ ]+', '', data.lower())
     data_seq = data.split()
     if len(data_seq) <= 2:  # remove query that are shorter than 3 words
@@ -281,3 +283,33 @@ def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
         x[idx, :lengths_x[idx]] = s_x
         y[idx, :lengths_y[idx]] = s_y
     return x, x_lengths, y, y_lengths
+
+
+def prepare_decode_batch(seqs_x, maxlen=None):
+    # seqs_x, seqs_y: a list of sentences
+    lengths_x = [len(s) for s in seqs_x]
+
+    if maxlen is not None:
+        new_seqs_x = []
+        new_lengths_x = []
+        for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x):
+            if l_x <= maxlen and l_y <= maxlen:
+                new_seqs_x.append(s_x)
+                new_lengths_x.append(l_x)
+        lengths_x = new_lengths_x
+        seqs_x = new_seqs_x
+
+        if len(lengths_x) < 1:
+            return None, None
+
+    batch_size = len(seqs_x)
+
+    x_lengths = np.array(lengths_x)
+
+    maxlen_x = np.max(x_lengths)
+
+    x = np.ones((batch_size, maxlen_x)).astype('int32') * end_token
+
+    for idx, s_x in enumerate(seqs_x):
+        x[idx, :lengths_x[idx]] = s_x
+    return x, x_lengths

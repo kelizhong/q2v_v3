@@ -25,7 +25,7 @@ from external.optimizer.cocob_optimizer import COCOB
 class Seq2SeqModel(object):
     def __init__(self, config, mode):
 
-        assert mode.lower() in ['train', 'decode']
+        assert mode.lower() in ['train', 'decode', 'encode']
 
         self.config = config
         self.mode = mode.lower()
@@ -70,7 +70,8 @@ class Seq2SeqModel(object):
         print("building model..")
         self.init_placeholders()
         self.build_encoder()
-        self.build_decoder()
+        if self.mode != 'encode':
+            self.build_decoder()
 
     def init_placeholders(self):
         # TODO use MutableHashTable to store word->id mapping in checkpoint
@@ -109,6 +110,9 @@ class Seq2SeqModel(object):
             # insert EOS symbol at the end of each decoder input
             self.decoder_targets_train = tf.concat([self.decoder_inputs,
                                                     decoder_end_token], axis=1)
+        elif self.mode == 'encode':
+            self.source_partitions = tf.placeholder(tf.int32, [None], name='source_partitions_encode')
+
 
     def build_encoder(self):
         print("building encoder..")
@@ -142,6 +146,9 @@ class Seq2SeqModel(object):
                 cell=self.encoder_cell, inputs=self.encoder_inputs_embedded,
                 sequence_length=self.encoder_inputs_length, dtype=self.dtype,
                 time_major=False)
+
+            if self.mode == 'encode':
+                self.src_last_output = self._last_output(self.encoder_outputs, self.encoder_cell.output_size, self.source_partitions)
 
     def build_decoder(self):
         print("building decoder and attention..")
@@ -492,6 +499,25 @@ class Seq2SeqModel(object):
         # GreedyDecoder: [batch_size, max_time_step]
         return outputs[0]  # BeamSearchDecoder: [batch_size, max_time_step, beam_width]
 
+    def encode(self, sess, encoder_inputs, encoder_inputs_length):
+
+        assert self.mode == 'encode', "encode function only support encode mode"
+        batch_size = encoder_inputs.shape[0]
+        max_seq_length = encoder_inputs.shape[1]
+        source_partitions = self._generate_partition(batch_size, encoder_inputs_length, max_seq_length)
+        input_feed = self.check_feeds(encoder_inputs, encoder_inputs_length,
+                                      decoder_inputs=None, decoder_inputs_length=None,
+                                      decode=True)
+
+        # Input feeds for dropout
+        input_feed[self.keep_prob_placeholder.name] = 1.0
+        input_feed[self.source_partitions.name] = source_partitions
+
+        output_feed = [self.src_last_output]
+        outputs = sess.run(output_feed, input_feed)
+
+        return outputs[0] # encode: [batch_size, cell.output_size]
+
     def check_feeds(self, encoder_inputs, encoder_inputs_length,
                     decoder_inputs, decoder_inputs_length, decode):
         """
@@ -534,3 +560,23 @@ class Seq2SeqModel(object):
             input_feed[self.decoder_inputs_length.name] = decoder_inputs_length
 
         return input_feed
+
+    @staticmethod
+    def _last_output(output, output_size, partitions):
+        outputs = tf.reshape(tf.stack(output), [-1, output_size])
+
+        num_partitions = 2
+
+        res_out = tf.dynamic_partition(outputs, partitions, num_partitions)
+
+        return res_out[1]
+
+    @staticmethod
+    def _generate_partition(batch_size, seqlen, max_seq_length):
+        partitions = [0] * (batch_size * max_seq_length)
+        step = 0
+        for each in seqlen:
+            idx = each + max_seq_length * step
+            partitions[idx - 1] = 1
+            step += 1
+        return partitions

@@ -37,7 +37,7 @@ class AksisParserWorker(Process):
             Port for the outbound traffic
     """
 
-    def __init__(self, ip, vocabulary_data_dir, top_words, batch_size, source_maxlen=30, target_maxlen=100,
+    def __init__(self, ip, vocabulary_data_dir, top_words, batch_size, source_maxlen=30, target_maxlen=80,
                  frontend_port=5556, backend_port=5557,
                  name="AksisWorkerProcess"):
         Process.__init__(self)

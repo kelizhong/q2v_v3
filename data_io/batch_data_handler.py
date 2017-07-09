@@ -38,7 +38,7 @@ class BatchDataHandler(object):
         """insert parsed data and return data_object, clean data_object when size reach batch size"""
         if self.data_object_length == self.batch_size:
             self.clear_data_object()
-        if len(source_tokens) and len(target_tokens):
+        if len(source_tokens): # for decode/inference, target_tokens is None
             self._sources.append(source_tokens)
             self._targets.append(target_tokens)
             self._labels.append(label_id)
