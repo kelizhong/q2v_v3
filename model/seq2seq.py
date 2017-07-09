@@ -32,7 +32,7 @@ class Seq2SeqModel(object):
 
         self.cell_type = config['cell_type']
         self.hidden_units = config['hidden_units']
-        self.depth = config['depth']
+        self.num_layers = config['num_layers']
         self.attention_type = config['attention_type']
         self.embedding_size = config['embedding_size']
         # TODO add bidirectional support
@@ -313,7 +313,7 @@ class Seq2SeqModel(object):
     # Building encoder cell
     def build_encoder_cell(self):
 
-        return MultiRNNCell([self.build_single_cell() for _ in range(self.depth)])
+        return MultiRNNCell([self.build_single_cell() for _ in range(self.num_layers)])
 
     # Building decoder cell and attention. Also returns decoder_initial_state
     def build_decoder_cell(self):
@@ -346,7 +346,7 @@ class Seq2SeqModel(object):
 
         # Building decoder_cell
         self.decoder_cell_list = [
-            self.build_single_cell() for _ in range(self.depth)]
+            self.build_single_cell() for _ in range(self.num_layers)]
         decoder_initial_state = encoder_last_state
 
         def attn_decoder_input_fn(inputs, attention):

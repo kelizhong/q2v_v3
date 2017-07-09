@@ -26,13 +26,13 @@ class Inference(object):
         sources = []
         self.batch_data.clear_data_object()
         for each in inputs:
-            sources, _, _ = self.batch_data.parse_and_insert_data_object(each, None)
+            sources, source_tokens, _, _, _ = self.batch_data.parse_and_insert_data_object(each, None)
         result = None
         if len(sources) > 0:
-            sources, source_lens = prepare_decode_batch(sources)
-            result = self.model.encode(self.sess, sources, source_lens)
+            source_tokens, source_lens = prepare_decode_batch(source_tokens)
+            result = self.model.encode(self.sess, source_tokens, source_lens)
 
-        return result
+        return sources, result
 
     def batch_encode(self, file):
         model_path = os.path.join(FLAGS.model_dir, "embedding")
@@ -49,19 +49,21 @@ class Inference(object):
                 sources.add(line)
         metadata_path = embed.metadata_path
 
-        with open(metadata_path, 'w+') as item_file:
-            item_file.write('id\tchar\n')
-            for i, each in enumerate(sources):
-                item_file.write('{}\t{}\n'.format(i, each))
-            print('metadata file created')
-
+        sources_list = []
         embedding_list = []
         # the left over elements that would be truncated by zip
         for each in zip(*[iter(sources)]*2):
-            result = self.encode(each)
-
+            batch_sources, result = self.encode(each)
             if result is not None:
+                sources_list.extend(batch_sources)
                 embedding_list.append(result)
+
+        with open(metadata_path, 'w+') as item_file:
+            item_file.write('id\tchar\n')
+            for i, each in enumerate(sources_list):
+                item_file.write('{}\t{}\n'.format(i, each))
+            print('metadata file created')
+
         concat = np.concatenate(embedding_list, axis=0)
         item_size, unit_size = concat.shape
         item_embedding = tf.get_variable(embed.tensor_name, [item_size, unit_size])
@@ -78,6 +80,6 @@ class Inference(object):
         return vocab
 
 i = Inference()
-i.batch_encode('titles')
+i.batch_encode('source')
 #v = i.encode(["nike shoe men", "apple mac mini"])
 #print(cos_distance(v[0], v[1]))

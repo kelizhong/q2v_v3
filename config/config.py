@@ -22,7 +22,6 @@ tf.app.flags.DEFINE_integer("encoding_size", 80,
 tf.app.flags.DEFINE_integer("src_cell_size", 96, "LSTM cell size in source RNN model.")
 tf.app.flags.DEFINE_integer("tgt_cell_size", 96,
                             "LSTM cell size in target RNN model. Same number of nodes for each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("max_vocabulary_size", 64001, "Sequence vocabulary size in the mapping task.")
 
 
@@ -58,7 +57,7 @@ tf.app.flags.DEFINE_boolean("is_sync", False, "")
 tf.app.flags.DEFINE_string('cell_type', 'lstm', 'RNN cell for encoder and decoder, default: lstm')
 tf.app.flags.DEFINE_string('attention_type', 'bahdanau', 'Attention mechanism: (bahdanau, luong), default: bahdanau')
 tf.app.flags.DEFINE_integer('hidden_units', 256, 'Number of hidden units in each layer')
-tf.app.flags.DEFINE_integer('depth', 3, 'Number of layers in each encoder and decoder')
+tf.app.flags.DEFINE_integer('num_layers', 3, 'Number of layers in each encoder and decoder')
 tf.app.flags.DEFINE_integer('embedding_size', 64, 'Embedding dimensions of encoder and decoder inputs')
 tf.app.flags.DEFINE_integer('num_encoder_symbols', 64001, 'Source vocabulary size')
 tf.app.flags.DEFINE_integer('num_decoder_symbols', 64001, 'Target vocabulary size')

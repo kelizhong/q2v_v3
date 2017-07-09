@@ -23,7 +23,7 @@ class BatchDataHandler(object):
         self.vocabulary = vocabulary
         self.source_maxlen = source_maxlen
         self.target_maxlen = target_maxlen
-        self._sources, self._targets, self._labels = [], [], []
+        self._sources, self._source_tokens, self._targets, self._target_tokens, self._labels = [], [], [], [], []
 
     @property
     def data_object_length(self):
@@ -34,13 +34,15 @@ class BatchDataHandler(object):
         """parse data using trigram parser, insert it to data_object to generate batch data"""
         raise NotImplementedError
 
-    def insert_data_object(self, source_tokens, target_tokens, label_id):
+    def insert_data_object(self, source, source_tokens, target, target_tokens, label_id):
         """insert parsed data and return data_object, clean data_object when size reach batch size"""
         if self.data_object_length == self.batch_size:
             self.clear_data_object()
         if len(source_tokens): # for decode/inference, target_tokens is None
-            self._sources.append(source_tokens)
-            self._targets.append(target_tokens)
+            self._sources.append(source)
+            self._source_tokens.append(source_tokens)
+            self._targets.append(target)
+            self._target_tokens.append(target_tokens)
             self._labels.append(label_id)
         return self.data_object
 
@@ -52,7 +54,7 @@ class BatchDataHandler(object):
 
     @property
     def data_object(self):
-        return self._sources, self._targets, self._labels
+        return self._sources, self._source_tokens, self._targets, self._target_tokens, self._labels
 
 
 class BatchDataTrigramHandler(BatchDataHandler):
@@ -74,7 +76,7 @@ class BatchDataTrigramHandler(BatchDataHandler):
 
     def parse_and_insert_data_object(self, source, target, label=1):
         """parse data using trigram parser, insert it to data_object to generate batch data"""
-        source_tokens = trigram_encoding(source, self.vocabulary, self.source_maxlen)
-        target_tokens = trigram_encoding(target, self.vocabulary, self.target_maxlen)
-        data_object = self.insert_data_object(source_tokens, target_tokens, label)
+        source, source_tokens = trigram_encoding(source, self.vocabulary, self.source_maxlen)
+        target, target_tokens = trigram_encoding(target, self.vocabulary, self.target_maxlen)
+        data_object = self.insert_data_object(source, source_tokens, target, target_tokens, label)
         return data_object
