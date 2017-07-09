@@ -49,7 +49,9 @@ class BatchDataHandler(object):
     def clear_data_object(self):
         """clean data_object"""
         del self._sources[:]
+        del self._source_tokens[:]
         del self._targets[:]
+        del self._target_tokens[:]
         del self._labels[:]
 
     @property

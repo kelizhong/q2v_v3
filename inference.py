@@ -17,14 +17,15 @@ class Inference(object):
         self.sess = tf.Session()
         self.model = self._init_model()
         self.batch_data = BatchDataTrigramHandler(self.vocabulary, source_maxlen=FLAGS.source_maxlen, target_maxlen=FLAGS.target_maxlen, batch_size=sys.maxsize)
-        self.batch_size = 2
+        self.batch_size = 65536
 
     def _init_model(self):
         model = create_model(self.sess, FLAGS, mode='encode')
         return model
 
     def encode(self, inputs):
-        sources = []
+        sources = None
+        source_tokens = []
         self.batch_data.clear_data_object()
         for each in inputs:
             sources, source_tokens, _, _, _ = self.batch_data.parse_and_insert_data_object(each, None)
@@ -32,7 +33,6 @@ class Inference(object):
         if len(sources) > 0:
             source_tokens, source_lens = prepare_decode_batch(source_tokens)
             result = self.model.encode(self.sess, source_tokens, source_lens)
-
         return sources, result
 
     def batch_encode(self, file):
@@ -84,6 +84,6 @@ class Inference(object):
         return vocab
 
 i = Inference()
-i.batch_encode('titles')
+i.batch_encode('source')
 #v = i.encode(["nike shoe men", "apple mac mini"])
 #print(cos_distance(v[0], v[1]))
