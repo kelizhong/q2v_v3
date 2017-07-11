@@ -1,5 +1,6 @@
 # coding=utf-8
 """util for data processing"""
+import sys
 import re
 import codecs
 import string
@@ -218,55 +219,42 @@ def find_ngrams(input_list, n):
     return zip(*[input_list[i:] for i in range(n)])
 
 
-def trigram_encoding(data, trigram_dict, max_len):
-    if not data:
-        return None, []
-    data = re.sub('[^a-z0-9.&\\ ]+', '', data.lower())
-    data_seq = data.split()
-    if len(data_seq) <= 2:  # remove query that are shorter than 3 words
-        # raise Exception("trigram_encoding: the length of data should larger than 2 words, error data: %s" % data)
-        return None, []
-
-    data_triagrams = list(chain(*[find_ngrams("#" + qw + "#", 3) for qw in data_seq]))
-    data_triagrams_index = [trigram_dict[d] if d in trigram_dict else len(trigram_dict) + 1 for d in data_triagrams]
-    data_triagrams_index = data_triagrams_index[0:max_len]
-    return data, data_triagrams_index
-
-
-def trigram_sentence_to_padding_index(sentence, trigram_dict, maxlen):
-    try:
-        index = trigram_encoding(sentence, trigram_dict)
-    except Exception as e:
-        return 0, []
-    original_len = min(len(index), maxlen)
-    index = pad_sequences(np.array([index]), padding='post', truncating='post', maxlen=maxlen)
-    return original_len, index[0]
+def trigram_encoding(data, trigram_dict, return_data=True):
+    if data is None or len(data.strip()) == 0:
+        data_triagrams_index = list()
+        data = None
+    else:
+        refined_data = re.sub('[^a-z0-9.&\\ ]+', '', data.strip().lower())
+        data_seq = refined_data.split()
+        data_triagrams = list(chain(*[find_ngrams("#" + qw + "#", 3) for qw in data_seq]))
+        data_triagrams_index = [trigram_dict[d] if d in trigram_dict else len(trigram_dict) + 1 for d in data_triagrams]
+    result = data_triagrams_index, data if return_data else data_triagrams_index
+    return result
 
 
 # batch preparation of a given sequence pair for training
-def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
+def prepare_train_pair_batch(seqs_x, seqs_y, source_maxlen=sys.maxsize, target_maxlen=sys.maxsize, dtype='int32'):
     # seqs_x, seqs_y: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
 
-    if maxlen is not None:
-        new_seqs_x = []
-        new_seqs_y = []
-        new_lengths_x = []
-        new_lengths_y = []
-        for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x, lengths_y, seqs_y):
-            if l_x <= maxlen and l_y <= maxlen:
-                new_seqs_x.append(s_x)
-                new_lengths_x.append(l_x)
-                new_seqs_y.append(s_y)
-                new_lengths_y.append(l_y)
-        lengths_x = new_lengths_x
-        seqs_x = new_seqs_x
-        lengths_y = new_lengths_y
-        seqs_y = new_seqs_y
+    new_seqs_x = []
+    new_seqs_y = []
+    new_lengths_x = []
+    new_lengths_y = []
+    for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x, lengths_y, seqs_y):
+        if l_x <= source_maxlen and l_y <= target_maxlen:
+            new_seqs_x.append(s_x)
+            new_lengths_x.append(l_x)
+            new_seqs_y.append(s_y)
+            new_lengths_y.append(l_y)
+    lengths_x = new_lengths_x
+    seqs_x = new_seqs_x
+    lengths_y = new_lengths_y
+    seqs_y = new_seqs_y
 
-        if len(lengths_x) < 1 or len(lengths_y) < 1:
-            return None, None, None, None
+    if len(lengths_x) < 1 or len(lengths_y) < 1:
+        return None, None, None, None
 
     batch_size = len(seqs_x)
 
@@ -276,8 +264,8 @@ def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
     maxlen_x = np.max(x_lengths)
     maxlen_y = np.max(y_lengths)
 
-    x = np.ones((batch_size, maxlen_x)).astype('int32') * end_token
-    y = np.ones((batch_size, maxlen_y)).astype('int32') * end_token
+    x = np.ones((batch_size, maxlen_x)).astype(dtype) * end_token
+    y = np.ones((batch_size, maxlen_y)).astype(dtype) * end_token
 
     for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
         x[idx, :lengths_x[idx]] = s_x
@@ -285,22 +273,21 @@ def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
     return x, x_lengths, y, y_lengths
 
 
-def prepare_decode_batch(seqs_x, maxlen=None):
+def prepare_decode_batch(seqs_x, maxlen=sys.maxsize):
     # seqs_x, seqs_y: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
 
-    if maxlen is not None:
-        new_seqs_x = []
-        new_lengths_x = []
-        for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x):
-            if l_x <= maxlen and l_y <= maxlen:
-                new_seqs_x.append(s_x)
-                new_lengths_x.append(l_x)
-        lengths_x = new_lengths_x
-        seqs_x = new_seqs_x
+    new_seqs_x = []
+    new_lengths_x = []
+    for l_x, s_x in zip(lengths_x, seqs_x):
+        if l_x <= maxlen:
+            new_seqs_x.append(s_x)
+            new_lengths_x.append(l_x)
+    lengths_x = new_lengths_x
+    seqs_x = new_seqs_x
 
-        if len(lengths_x) < 1:
-            return None, None
+    if len(lengths_x) < 1:
+        return None, None
 
     batch_size = len(seqs_x)
 

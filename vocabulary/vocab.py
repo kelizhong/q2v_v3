@@ -95,24 +95,24 @@ class VocabularyFromLocalFile(VocabularyBase):
           tokenizer: tokenizer to tokenize the sentence in raw data
         """
         if not os.path.isfile(self.words_freq_counter_path):
-            print("Building words frequency counter %s from data %s" % (self.words_freq_counter_path, raw_data_path))
+            logging.info("Building words frequency counter {} from data {}", self.words_freq_counter_path, raw_data_path)
 
             def _word_generator():
                 with open(raw_data_path, 'r+') as f:
                     for num, line in enumerate(f):
                         if num % 100000 == 0:
-                            print("  processing line %d" % num)
+                            logging.info("  processing line {}", num)
                         try:
                             tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
                         except Exception as e:
-                            print("Tokenize failure: " + line)
+                            logging.error("Tokenize failure: {}", line)
                             continue
                         for word in tokens:
                             yield word
 
             counter = Counter(_word_generator())
             save_obj_pickle(counter, self.words_freq_counter_path, True)
-            print('Vocabulary file created')
+            logging.info('Vocabulary file created')
 
     def build_vocabulary_from_pickle(self, raw_data_path=None):
         # Load vocabulary
@@ -221,17 +221,16 @@ class VocabularyFromCustomStringTrigram(VocabularyBase):
     def build_words_frequency_counter(self, string=None):
         string = string if string else 'abcdefghijklmnopqrstuvwxyz1234567890#.&\\'
         if not os.path.isfile(self.words_freq_counter_path):
-            print("Building words frequency counter %s from custom string %s" % (self.words_freq_counter_path, string))
+            logging.info("Building words frequency counter %s from custom string %s" % (self.words_freq_counter_path, string))
 
             counter = Counter(product(string, repeat=3))
             save_obj_pickle(counter, self.words_freq_counter_path, True)
-            print('Vocabulary file created')
+            logging.info('Vocabulary file created')
 
     def build_vocabulary_from_pickle(self, string=None):
         # Load vocabulary
 
-        if string:
-            self.build_words_frequency_counter(string)
+        self.build_words_frequency_counter(string)
         logging.info("Loading vocabulary")
         vocab = super(VocabularyFromCustomStringTrigram, self).build_vocabulary_from_pickle()
         logging.info("Vocabulary size: %d" % len(vocab))

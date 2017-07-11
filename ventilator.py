@@ -1,6 +1,8 @@
 # coding=utf-8
 """
 produce train data for query2vec model
+Run like this:
+python ventilator.py q2v_aksis_ventilator ./data/rawdata --worker-num 30 -ap *add.201704 -1 -ap *purchase.201704 -1 -ap *click.201704 0.8 -bs 128
 """
 
 import os
@@ -22,7 +24,6 @@ def parse_args():
                         help='metric reporting frequency is set by seconds param')
     subparsers = parser.add_subparsers(help='Ventilator for query2vec train data')
 
-    parser.set_default_subparser("q2v_aksis_ventilator")
     q2v_aksis_ventilator_parser = subparsers.add_parser("q2v_aksis_ventilator")
     q2v_aksis_ventilator_parser.set_defaults(action='q2v_aksis_ventilator')
 

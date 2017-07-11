@@ -11,13 +11,15 @@ from utils.math_util import cos_distance
 import numpy as np
 from tensorflow.contrib.tensorboard.plugins import projector
 
+
 class Inference(object):
 
-    def __init__(self):
+    def __init__(self, source_maxlen=30, batch_size=65536, min_words=-1):
         self.sess = tf.Session()
         self.model = self._init_model()
-        self.batch_data = BatchDataTrigramHandler(self.vocabulary, source_maxlen=FLAGS.source_maxlen, target_maxlen=FLAGS.target_maxlen, batch_size=sys.maxsize)
-        self.batch_size = 65536
+        self.batch_data = BatchDataTrigramHandler(self.vocabulary, batch_size=sys.maxsize, min_words=min_words)
+        self.batch_size = batch_size
+        self.source_maxlen = source_maxlen
 
     def _init_model(self):
         model = create_model(self.sess, FLAGS, mode='encode')
@@ -28,10 +30,10 @@ class Inference(object):
         source_tokens = []
         self.batch_data.clear_data_object()
         for each in inputs:
-            sources, source_tokens, _, _, _ = self.batch_data.parse_and_insert_data_object(each, None)
+            sources, source_tokens, _, _ = self.batch_data.parse_and_insert_data_object(each, None)
         result = None
         if len(sources) > 0:
-            source_tokens, source_lens = prepare_decode_batch(source_tokens)
+            source_tokens, source_lens = prepare_decode_batch(source_tokens, maxlen=self.source_maxlen)
             result = self.model.encode(self.sess, source_tokens, source_lens)
         return sources, result
 
@@ -55,7 +57,9 @@ class Inference(object):
         count = 0
         # the left over elements that would be truncated by zip
         for each in zip(*[iter(sources)]*self.batch_size):
+            print(each)
             batch_sources, result = self.encode(each)
+            print(batch_sources)
             if result is not None:
                 sources_list.extend(batch_sources)
                 embedding_list.append(result)
@@ -83,7 +87,7 @@ class Inference(object):
         vocab = VocabularyFromCustomStringTrigram(FLAGS.vocabulary_data_dir).build_vocabulary_from_pickle()
         return vocab
 
-i = Inference()
+i = Inference(source_maxlen=FLAGS.source_maxlen, batch_size=2)
 i.batch_encode('source')
 #v = i.encode(["nike shoe men", "apple mac mini"])
 #print(cos_distance(v[0], v[1]))

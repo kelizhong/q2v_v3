@@ -2,10 +2,10 @@
 """
 Change the hardcoded host urls below with your own hosts.
 Run like this:
-pc-01$ CUDA_VISIBLE_DEVICES='' python train.py --job_name="ps" --task_index=0 --data_stream_port=5558 --gpu=0 --ps_hosts='localhost:2221' --worker_hosts='localhost:2222,localhost:2223,localhost:2224'
-pc-02$ CUDA_VISIBLE_DEVICES=1 python train.py --job_name="worker" --task_index=0 --data_stream_port=5558 --gpu=1 --ps_hosts='localhost:2221' --worker_hosts='localhost:2222,localhost:2223,localhost:2224'
-pc-03$ CUDA_VISIBLE_DEVICES=2 python train.py --job_name="worker" --task_index=1 --data_stream_port=5558 --gpu=2 --ps_hosts='localhost:2221' --worker_hosts='localhost:2222,localhost:2223,localhost:2224'
-pc-04$ CUDA_VISIBLE_DEVICES=3 python train.py --job_name="worker" --task_index=2 --data_stream_port=5558 --gpu=3 --ps_hosts='localhost:2221' --worker_hosts='localhost:2222,localhost:2223,localhost:2224'
+pc-01$ CUDA_VISIBLE_DEVICES='' python train.py --job_type="ps" --task_index=0 --data_stream_port=5558 --gpu=0 --ps_hosts='localhost:2221' --worker_hosts='localhost:2222,localhost:2223,localhost:2224'
+pc-02$ CUDA_VISIBLE_DEVICES=1 python train.py --job_type="worker" --task_index=0 --data_stream_port=5558 --gpu=1 --ps_hosts='localhost:2221' --worker_hosts='localhost:2222,localhost:2223,localhost:2224'
+pc-03$ CUDA_VISIBLE_DEVICES=2 python train.py --job_type="worker" --task_index=1 --data_stream_port=5558 --gpu=2 --ps_hosts='localhost:2221' --worker_hosts='localhost:2222,localhost:2223,localhost:2224'
+pc-04$ CUDA_VISIBLE_DEVICES=3 python train.py --job_type="worker" --task_index=2 --data_stream_port=5558 --gpu=3 --ps_hosts='localhost:2221' --worker_hosts='localhost:2222,localhost:2223,localhost:2224'
 
 # single machine with zmq stream:
 CUDA_VISIBLE_DEVICES=0 python train.py --gpu 0 --data_stream_port 5558
@@ -16,7 +16,6 @@ CUDA_VISIBLE_DEVICES=0 python train.py --gpu 0
 
 """
 
-from __future__ import print_function
 import time
 
 import logbook as logging
@@ -33,14 +32,46 @@ from data_io.single_stream.aksis_data_stream import AksisDataStream
 from helper.model_helper import create_model
 from utils.decorator_util import memoized
 from utils.log_util import setup_logger
-from utils.data_util import prepare_train_batch
+from utils.data_util import prepare_train_pair_batch
 
 
 class Trainer(object):
-    def __init__(self, job_name, ps_hosts, worker_hosts, task_index, gpu, model_dir, is_sync, raw_data_path, batch_size,
-                 display_freq, source_maxlen=None, target_maxlen=None, special_words=None, top_words=None,
-                 vocabulary_data_dir=None, port=None):
-        self.job_name = job_name
+    """query2vec model trainer"""
+
+    def __init__(self, ps_hosts='', worker_hosts='', model_dir='./data/models', job_type='worker', task_index=0,
+                 gpu=None, is_sync=False, raw_data_path=None, batch_size=128, display_freq=10, source_maxlen=None,
+                 target_maxlen=None, top_words=None, vocabulary_data_dir=None, data_stream_port=None):
+        """
+        Parameters
+        ----------
+        job_type: job type, One of 'ps', 'worker', 'single
+            1) single type is for single machine training, not need zmq stream
+            2) ps: parameter server
+        ps_hosts: Comma-separated list of hostname:port pairs for parameter server, like '127.0.0.1:2223,127.0.0.1:2224'
+        worker_hosts: Comma-separated list of hostname:port pairs for worker, like '127.0.0.1:2223,127.0.0.1:2224'
+        task_index: int
+            Index of task within the job
+        gpu: int
+            specify the gpu to use. Set it to None to use cpu to train
+        model_dir: trained model directory
+        is_sync: bool
+            whether to synchronize, aggregate gradients
+        raw_data_path: raw corpus data path for local data stream to product train data
+        batch_size: int
+            batch size for local data stream
+        display_freq: int
+            Display training status every this iteration
+        source_maxlen: int
+            max number of words/tokens in each source sequence.
+        target_maxlen: int
+            max number of words/tokens in each target sequence
+        top_words: the vocabulary size
+        vocabulary_data_dir:
+            the directory to store/load vocabulary data(vocabulary with most `top_words` common words and word counter)
+        data_stream_port: int
+            port for data zmq stream
+        """
+        self.job_type = job_type
         self.ps_hosts = ps_hosts.split(",")
         self.worker_hosts = worker_hosts.split(",")
         self.task_index = task_index
@@ -49,18 +80,19 @@ class Trainer(object):
         self.is_sync = is_sync
         self.raw_data_path = raw_data_path
         self.display_freq = display_freq
+        # batch_size only for data_local_stream
         self.batch_size = batch_size
         self.source_maxlen = source_maxlen
         self.target_maxlen = target_maxlen
-        self.special_words = special_words
         self.top_words = top_words
         self.vocabulary_data_dir = vocabulary_data_dir
-        self.port = port
+        self.data_stream_port = data_stream_port
 
     @property
     @memoized
     def master(self):
-        if self.job_name == "single":
+        """define execution engine"""
+        if self.job_type == "single":
             master = ""
         else:
             master = self.server.target
@@ -69,12 +101,16 @@ class Trainer(object):
     @property
     @memoized
     def server(self):
-        server = tf.train.Server(self.cluster, job_name=self.job_name, task_index=self.task_index)
+        """define an in-process TensorFlow server, for use in distributed training"""
+        assert self.job_type != 'single', "Not support cluster for single machine training"
+        server = tf.train.Server(self.cluster, job_name=self.job_type, task_index=self.task_index)
         return server
 
     @property
     @memoized
     def cluster(self):
+        """represents the set of processes that participate in a distributed TensorFlow computation"""
+        assert self.job_type != 'single', "Not support cluster for single machine training"
         cluster = tf.train.ClusterSpec({"ps": self.ps_hosts, "worker": self.worker_hosts})
         return cluster
 
@@ -87,7 +123,7 @@ class Trainer(object):
     @property
     @memoized
     def device(self):
-        if self.job_name == "worker":
+        if self.job_type == "worker":
             device = tf.train.replica_device_setter(cluster=self.cluster,
                                                     worker_device='job:worker/task:%d/%s' % (
                                                         self.task_index, self.core_str),
@@ -99,28 +135,31 @@ class Trainer(object):
 
     @property
     def data_zmq_stream(self):
-        if self.port is None:
+        """product data with zmq stream """
+        if self.data_stream_port is None:
             raise Exception("port is not defined for zmq stream")
-        data_stream = AksisDataReceiver(port=self.port)
+        data_stream = AksisDataReceiver(port=self.data_stream_port)
         return data_stream
 
     @property
     def data_local_stream(self):
+        """product data by parsing the local file"""
         data_stream = AksisDataStream(self.vocabulary_data_dir, top_words=self.top_words,
-                                      source_maxlen=self.source_maxlen, target_maxlen=self.target_maxlen,
                                       batch_size=self.batch_size,
                                       raw_data_path=self.raw_data_path).generate_batch_data()
         return data_stream
 
     @property
     def data_stream(self):
-        if self.port:
+        """data stream to produce train data"""
+        if self.data_stream_port:
             stream = self.data_zmq_stream
         else:
             stream = self.data_local_stream
         return stream
 
-    def _log_variable_info(self):
+    @staticmethod
+    def _log_variable_info():
         tensor_memory = defaultdict(int)
         for item in tf.global_variables():
             logging.info("variable:{}, device:{}", item.name, item.device)
@@ -131,13 +170,15 @@ class Trainer(object):
             logging.info("device:{}, memory:{}", key, value)
 
     def train(self):
-        if self.job_name == "ps":
+        if self.job_type == "ps":
+            logging.info("starting parameter:{}", self.task_index)
             self.server.join()
         else:
             with tf.device(self.device):
                 with tf.Session(target=self.master,
                                 config=tf.ConfigProto(allow_soft_placement=FLAGS.allow_soft_placement,
                                                       log_device_placement=FLAGS.log_device_placement, )) as sess:
+                    logging.info("creating model for  worker:{}", self.task_index)
                     model = create_model(sess, FLAGS)
                 self._log_variable_info()
                 summary_op = tf.summary.merge_all()
@@ -155,10 +196,9 @@ class Trainer(object):
                                             gpu_options=gpu_options,
                                             intra_op_parallelism_threads=16)
             with sv.prepare_or_wait_for_session(master=self.master, config=session_config) as sess:
-                # setup tensorboard logging
-                # sw = tf.summary.FileWriter(FLAGS.model_dir, sess.graph, flush_secs=120)
-
+                # TODO andd tensorboard support
                 if self.task_index == 0 and self.is_sync:
+                    # TODO and synchronize optimizer
                     sv.start_queue_runners(sess, [model.chief_queue_runner])
                     sess.run(model.init_token_op)
 
@@ -167,10 +207,13 @@ class Trainer(object):
                 data_stream = self.data_stream
                 for sources, targets in data_stream:
                     start_time = time.time()
-                    sources, source_lens, targets, target_lens = prepare_train_batch(sources, targets)
+                    sources, source_lens, targets, target_lens = prepare_train_pair_batch(sources, targets,
+                                                                                          source_maxlen=self.source_maxlen,
+                                                                                          target_maxlen=self.target_maxlen)
                     # Get a batch from training parallel data
                     if sources is None or targets is None:
-                        logging.warn('No samples under max_seq_length {}', FLAGS.max_seq_length)
+                        logging.warn('No samples under source_max_seq_length {} or target_max_seq_length {}',
+                                     self.source_maxlen, self.target_maxlen)
                         continue
 
                     # Execute a single training step
@@ -182,8 +225,6 @@ class Trainer(object):
                     words_done += float(np.sum(source_lens + target_lens))
                     sents_done += float(sources.shape[0])  # batch_size
 
-                    # loss_summary = tf.Summary(value=[tf.Summary.Value(tag="loss", simple_value=loss)])
-                    # sw.add_summary(loss_summary, current_step)
                     # Once in a while, print statistics, and run evals.
                     # Increase the epoch index of the model
                     model.global_epoch_step_op.eval()
@@ -203,14 +244,11 @@ class Trainer(object):
 
 def main(_):
     setup_logger(FLAGS.log_file_name)
-    trainer = Trainer(special_words=dict(), raw_data_path=FLAGS.raw_data_path,
-                      vocabulary_data_dir=FLAGS.vocabulary_data_dir,
-                      port=FLAGS.data_stream_port, top_words=FLAGS.max_vocabulary_size,
-                      source_maxlen=FLAGS.source_maxlen, target_maxlen=FLAGS.target_maxlen,
-                      job_name=FLAGS.job_name,
+    trainer = Trainer(raw_data_path=FLAGS.raw_data_path, vocabulary_data_dir=FLAGS.vocabulary_data_dir,
+                      data_stream_port=FLAGS.data_stream_port, top_words=FLAGS.vocabulary_size,
+                      source_maxlen=FLAGS.source_maxlen, target_maxlen=FLAGS.target_maxlen, job_type=FLAGS.job_type,
                       ps_hosts=FLAGS.ps_hosts, worker_hosts=FLAGS.worker_hosts, task_index=FLAGS.task_index,
-                      gpu=FLAGS.gpu,
-                      model_dir=FLAGS.model_dir, is_sync=FLAGS.is_sync, batch_size=FLAGS.batch_size,
+                      gpu=FLAGS.gpu, model_dir=FLAGS.model_dir, is_sync=FLAGS.is_sync, batch_size=FLAGS.batch_size,
                       display_freq=FLAGS.display_freq)
     trainer.train()
 

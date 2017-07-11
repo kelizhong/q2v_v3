@@ -63,7 +63,7 @@ class AksisDataCollector(Process):
             # accept the msg and add it to the queue and send the batch data to trainer
             # source_tokens for query in aksis data
             # target_tokens for title in aksis data
-            source_tokens, target_tokens, _ = pickle.loads(msg[0])
+            _, source_tokens, _, target_tokens = pickle.loads(msg[0])
             # add the data from parser worker, and get data from the batch queue
             if len(source_tokens) == self.batch_size:
                 sender.send_pyobj((source_tokens, target_tokens))

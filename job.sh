@@ -8,7 +8,7 @@ then
     echo ""
     echo "****************************** Usage *************************************"
     echo "Create a job as ps(id), worker(id) or single "
-    echo "    sh "$0" create [JOB_NAME(ps/worker/single)] [job_idx] [gpu]"
+    echo "    sh "$0" create [JOB_TYPE(ps/worker/single)] [job_idx] [gpu]"
     echo ""
     echo "Stop all"
     echo "    sh "$0" stop"
@@ -19,7 +19,7 @@ fi
 
 if [ "$1"x = "create"x ]
 then
-    JOB_NAME=$2
+    JOB_TYPE=$2
     INDEX=$3
     GPU=$4
     PORT=$5
@@ -28,27 +28,27 @@ then
 
     [ ! -d "$TRAIN_DIR" ] && mkdir -p "$TRAIN_DIR"
 
-    if [ "$JOB_NAME"x = "ps"x ] || [ "$JOB_NAME"x = "worker"x ] || [ "$JOB_NAME"x = "single"x ]
+    if [ "$JOB_TYPEx = "ps"x ] || [ "$JOB_TYPE"x = "worker"x ] || [ "$JOB_TYPE"x = "single"x ]
     then
         touch $TRAIN_DIR/run.pid
-        EXISTS=`awk -v job_name=$JOB_NAME -v idx=$INDEX '{if($1==job_name"_"idx)print}' $TRAIN_DIR/run.pid`
+        EXISTS=`awk -v job_type=$JOB_TYPE-v idx=$INDEX '{if($1==job_type"_"idx)print}' $TRAIN_DIR/run.pid`
         if [ ! -z $EXISTS ]
         then
            echo -e "\nAready Runing: \n"$EXISTS"\n"
            exit
         fi
 
-        touch $TRAIN_DIR/"train_"$JOB_NAME"_"$INDEX".log"
-        touch $TRAIN_DIR/"std_"$JOB_NAME"_"$INDEX".log"
-        CUDA_VISIBLE_DEVICES=$GPU nohup python -u train.py --job_name=$JOB_NAME --task_index=$INDEX --gpu=$GPU --data_stream_port=$PORT --ps_hosts=$PS --worker_hosts=$WORKER 2>&1 > $TRAIN_DIR/"std_"$JOB_NAME"_"$INDEX".log" &
+        touch $TRAIN_DIR/"train_"$JOB_TYPE"_"$INDEX".log"
+        touch $TRAIN_DIR/"std_"$JOB_TYPE"_"$INDEX".log"
+        CUDA_VISIBLE_DEVICES=$GPU nohup python -u train.py --job_type=$JOB_TYPE --task_index=$INDEX --gpu=$GPU --data_stream_port=$PORT --ps_hosts=$PS --worker_hosts=$WORKER 2>&1 > $TRAIN_DIR/"std_"$JOB_TYPE"_"$INDEX".log" &
 
         TIME=`date "+%Y-%m-%d-%T"`
-        TMP=`echo $JOB_NAME"_"$INDEX" "$!" "$DATA_DIR" "$TIME`
+        TMP=`echo $JOB_TYPE"_"$INDEX" "$!" "$DATA_DIR" "$TIME`
         echo $TMP  >> $TRAIN_DIR/status
 
     else
         echo "Create a job as ps(id), worker(id) or single "
-        echo "    sh "$0" create [JOB_NAME(ps/worker/single)] [job_idx] [gpu]"
+        echo "    sh "$0" create [JOB_TYPE(ps/worker/single)] [job_idx] [gpu]"
         exit
     fi
 

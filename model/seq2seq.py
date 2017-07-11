@@ -20,6 +20,7 @@ from tensorflow.contrib.seq2seq.python.ops import beam_search_decoder
 from config.config import start_token, end_token
 
 from external.optimizer.cocob_optimizer import COCOB
+import logbook as logging
 
 
 class Seq2SeqModel(object):
@@ -38,8 +39,7 @@ class Seq2SeqModel(object):
         # TODO add bidirectional support
         # self.bidirectional = config.bidirectional
 
-        self.num_encoder_symbols = config['num_encoder_symbols']
-        self.num_decoder_symbols = config['num_decoder_symbols']
+        self.vocabulary_size = config['vocabulary_size']
 
         self.use_residual = config['use_residual']
         self.attn_input_feeding = config['attn_input_feeding']
@@ -67,13 +67,15 @@ class Seq2SeqModel(object):
         self.saver = tf.train.Saver(tf.global_variables())
 
     def build_model(self):
-        print("building model..")
+        logging.info("building model..")
         self.init_placeholders()
+        self.init_embedding()
         self.build_encoder()
         if self.mode != 'encode':
             self.build_decoder()
 
     def init_placeholders(self):
+        logging.info("initializing placeholders")
         # TODO use MutableHashTable to store word->id mapping in checkpoint
         # encoder_inputs: [batch_size, max_time_steps]
         self.encoder_inputs = tf.placeholder(dtype=tf.int32,
@@ -111,26 +113,26 @@ class Seq2SeqModel(object):
             self.decoder_targets_train = tf.concat([self.decoder_inputs,
                                                     decoder_end_token], axis=1)
         elif self.mode == 'encode':
-            self.source_partitions = tf.placeholder(tf.int32, [None], name='source_partitions_encode')
+            self.source_partitions = tf.placeholder(tf.int32, (None,), name='source_partitions_encode')
 
+    def init_embedding(self):
+        logging.info("initializing shared word embedding")
+        # Initialize embeddings to have variance=1.
+        sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
+        initializer = tf.random_uniform_initializer(-sqrt3, sqrt3, dtype=self.dtype)
+        with tf.variable_scope('shared'):
+            self.embeddings = tf.get_variable(name='embedding', shape=[self.vocabulary_size, self.embedding_size],
+                                              initializer=initializer, dtype=self.dtype)
 
     def build_encoder(self):
-        print("building encoder..")
+        logging.info("building encoder..")
         with tf.variable_scope('encoder'):
             # Building encoder_cell
             self.encoder_cell = self.build_encoder_cell()
 
-            # Initialize encoder_embeddings to have variance=1.
-            sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
-            initializer = tf.random_uniform_initializer(-sqrt3, sqrt3, dtype=self.dtype)
-
-            self.encoder_embeddings = tf.get_variable(name='embedding',
-                                                      shape=[self.num_encoder_symbols, self.embedding_size],
-                                                      initializer=initializer, dtype=self.dtype)
-
             # Embedded_inputs: [batch_size, time_step, embedding_size]
             self.encoder_inputs_embedded = tf.nn.embedding_lookup(
-                params=self.encoder_embeddings, ids=self.encoder_inputs)
+                params=self.embeddings, ids=self.encoder_inputs)
 
             # Input projection layer to feed embedded inputs to the cell
             # ** Essential when use_residual=True to match input/output dims
@@ -148,33 +150,28 @@ class Seq2SeqModel(object):
                 time_major=False)
 
             if self.mode == 'encode':
-                self.src_last_output = self._last_output(self.encoder_outputs, self.encoder_cell.output_size, self.source_partitions)
+                # last_output: [batch_size, cell_output_size]
+                self.src_last_output = self._last_output(self.encoder_outputs, self.encoder_cell.output_size,
+                                                         self.source_partitions)
 
     def build_decoder(self):
-        print("building decoder and attention..")
+        logging.info("building decoder and attention..")
+
         with tf.variable_scope('decoder'):
             # Building decoder_cell and decoder_initial_state
             self.decoder_cell, self.decoder_initial_state = self.build_decoder_cell()
-
-            # Initialize decoder embeddings to have variance=1.
-            sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
-            initializer = tf.random_uniform_initializer(-sqrt3, sqrt3, dtype=self.dtype)
-
-            self.decoder_embeddings = tf.get_variable(name='embedding',
-                                                      shape=[self.num_decoder_symbols, self.embedding_size],
-                                                      initializer=initializer, dtype=self.dtype)
 
             # Input projection layer to feed embedded inputs to the cell
             # ** Essential when use_residual=True to match input/output dims
             input_layer = Dense(self.hidden_units, dtype=self.dtype, name='input_projection')
 
             # Output projection layer to convert cell_outputs to logits
-            output_layer = Dense(self.num_decoder_symbols, name='output_projection')
+            output_layer = Dense(self.vocabulary_size, name='output_projection')
 
             if self.mode == 'train':
                 # decoder_inputs_embedded: [batch_size, max_time_step + 1, embedding_size]
                 self.decoder_inputs_embedded = tf.nn.embedding_lookup(
-                    params=self.decoder_embeddings, ids=self.decoder_inputs_train)
+                    params=self.embeddings, ids=self.decoder_inputs_train)
 
                 # Embedded inputs having gone through input projection layer
                 self.decoder_inputs_embedded = input_layer(self.decoder_inputs_embedded)
@@ -189,7 +186,6 @@ class Seq2SeqModel(object):
                                                         helper=training_helper,
                                                         initial_state=self.decoder_initial_state,
                                                         output_layer=output_layer)
-                # output_layer=None)
 
                 # Maximum decoder time_steps in current batch
                 max_decoder_length = tf.reduce_max(self.decoder_inputs_length_train)
@@ -235,7 +231,7 @@ class Seq2SeqModel(object):
                 start_tokens = tf.ones([self.batch_size, ], tf.int32) * start_token
 
                 def embed_and_input_proj(inputs):
-                    return input_layer(tf.nn.embedding_lookup(self.decoder_embeddings, inputs))
+                    return input_layer(tf.nn.embedding_lookup(self.embeddings, inputs))
 
                 if not self.use_beamsearch_decode:
                     # Helper to feed inputs for greedy decoding: uses the argmax of the output
@@ -243,14 +239,14 @@ class Seq2SeqModel(object):
                                                                     end_token=end_token,
                                                                     embedding=embed_and_input_proj)
                     # Basic decoder performs greedy decoding at each time step
-                    print("building greedy decoder..")
+                    logging.info("building greedy decoder..")
                     inference_decoder = seq2seq.BasicDecoder(cell=self.decoder_cell,
                                                              helper=decoding_helper,
                                                              initial_state=self.decoder_initial_state,
                                                              output_layer=output_layer)
                 else:
                     # Beamsearch is used to approximately find the most likely translation
-                    print("building beamsearch decoder..")
+                    logging.info("building beamsearch decoder..")
                     inference_decoder = beam_search_decoder.BeamSearchDecoder(cell=self.decoder_cell,
                                                                               embedding=embed_and_input_proj,
                                                                               start_tokens=start_tokens,
@@ -325,7 +321,7 @@ class Seq2SeqModel(object):
         # To use BeamSearchDecoder, encoder_outputs, encoder_last_state, encoder_inputs_length
         # needs to be tiled so that: [batch_size, .., ..] -> [batch_size x beam_width, .., ..]
         if self.use_beamsearch_decode:
-            print("use beamsearch decoding..")
+            logging.info("use beamsearch decoding..")
             encoder_outputs = seq2seq.tile_batch(
                 self.encoder_outputs, multiplier=self.beam_width)
             encoder_last_state = nest.map_structure(
@@ -386,7 +382,7 @@ class Seq2SeqModel(object):
         return MultiRNNCell(self.decoder_cell_list), decoder_initial_state
 
     def init_optimizer(self):
-        print("setting optimizer..")
+        logging.info("setting optimizer..")
         # Gradients and SGD update operation for training the model
         trainable_params = tf.trainable_variables()
         if self.optimizer.lower() == 'adadelta':
@@ -417,13 +413,13 @@ class Seq2SeqModel(object):
         # temporary code
         # del tf.get_collection_ref('LAYER_NAME_UIDS')[0]
         save_path = saver.save(sess, save_path=path, global_step=global_step)
-        print('model saved at %s' % save_path)
+        logging.info('model saved at %s' % save_path)
 
     def restore(self, sess, path, var_list=None):
         # var_list = None returns the list of all saveable variables
         saver = tf.train.Saver(var_list)
         saver.restore(sess, save_path=path)
-        print('model restored from %s' % path)
+        logging.info('model restored from %s' % path)
 
     def train(self, sess, encoder_inputs, encoder_inputs_length,
               decoder_inputs, decoder_inputs_length):
@@ -485,7 +481,7 @@ class Seq2SeqModel(object):
         return outputs[0]  # loss
 
     def predict(self, sess, encoder_inputs, encoder_inputs_length):
-
+        """Given encoder inputs, predict the decoder output"""
         input_feed = self.check_feeds(encoder_inputs, encoder_inputs_length,
                                       decoder_inputs=None, decoder_inputs_length=None,
                                       decode=True)
@@ -500,11 +496,10 @@ class Seq2SeqModel(object):
         return outputs[0]  # BeamSearchDecoder: [batch_size, max_time_step, beam_width]
 
     def encode(self, sess, encoder_inputs, encoder_inputs_length):
-
+        """encode input to a vector"""
         assert self.mode == 'encode', "encode function only support encode mode"
-        batch_size = encoder_inputs.shape[0]
         max_seq_length = encoder_inputs.shape[1]
-        source_partitions = self._generate_partition(batch_size, encoder_inputs_length, max_seq_length)
+        source_partitions = self._generate_partition(encoder_inputs_length, max_seq_length)
         input_feed = self.check_feeds(encoder_inputs, encoder_inputs_length,
                                       decoder_inputs=None, decoder_inputs_length=None,
                                       decode=True)
@@ -516,7 +511,7 @@ class Seq2SeqModel(object):
         output_feed = [self.src_last_output]
         outputs = sess.run(output_feed, input_feed)
 
-        return outputs[0] # encode: [batch_size, cell.output_size]
+        return outputs[0]  # encode: [batch_size, cell.output_size]
 
     def check_feeds(self, encoder_inputs, encoder_inputs_length,
                     decoder_inputs, decoder_inputs_length, decode):
@@ -550,7 +545,7 @@ class Seq2SeqModel(object):
                 raise ValueError("Decoder targets and their lengths must be equal in their "
                                  "batch_size, %d != %d" % (target_batch_size, decoder_inputs_length.shape[0]))
 
-        input_feed = {}
+        input_feed = dict()
 
         input_feed[self.encoder_inputs.name] = encoder_inputs
         input_feed[self.encoder_inputs_length.name] = encoder_inputs_length
@@ -563,6 +558,22 @@ class Seq2SeqModel(object):
 
     @staticmethod
     def _last_output(output, output_size, partitions):
+        """return rnn last output
+        tf.dynamic_partition(data, partitions, num_partitions, name = None)
+        # Scalar partitions
+        partitions = 1
+        num_partitions = 2
+        data = [10, 20]
+        outputs[0] = []  # Empty with shape [0, 2]
+        outputs[1] = [[10, 20]]
+
+        # Vector partitions
+        partitions = [0, 0, 1, 1, 0]
+        num_partitions = 2
+        data = [10, 20, 30, 40, 50]
+        outputs[0] = [10, 20, 50]
+        outputs[1] = [30, 40]
+        """
         outputs = tf.reshape(tf.stack(output), [-1, output_size])
 
         num_partitions = 2
@@ -572,7 +583,8 @@ class Seq2SeqModel(object):
         return res_out[1]
 
     @staticmethod
-    def _generate_partition(batch_size, seqlen, max_seq_length):
+    def _generate_partition(seqlen, max_seq_length):
+        batch_size = len(seqlen)
         partitions = [0] * (batch_size * max_seq_length)
         step = 0
         for each in seqlen:
