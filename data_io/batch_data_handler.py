@@ -60,6 +60,8 @@ class BatchDataTrigramHandler(BatchDataHandler):
             vocabulary from AKSIS corpus data or custom string
         batch_size: int
             Batch size for each data batch
+        min_words: int
+            ignore the source wit length less than `min_words`
     """
 
     def __init__(self, vocabulary, batch_size=sys.maxsize, min_words=2):

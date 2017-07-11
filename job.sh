@@ -28,13 +28,13 @@ then
 
     [ ! -d "$TRAIN_DIR" ] && mkdir -p "$TRAIN_DIR"
 
-    if [ "$JOB_TYPEx = "ps"x ] || [ "$JOB_TYPE"x = "worker"x ] || [ "$JOB_TYPE"x = "single"x ]
+    if [ "$JOB_TYPE"x = "ps"x ] || [ "$JOB_TYPE"x = "worker"x ] || [ "$JOB_TYPE"x = "single"x ]
     then
         touch $TRAIN_DIR/run.pid
-        EXISTS=`awk -v job_type=$JOB_TYPE-v idx=$INDEX '{if($1==job_type"_"idx)print}' $TRAIN_DIR/run.pid`
+        EXISTS=`awk -v job_type=$JOB_TYPE -v idx=$INDEX '{if($1==job_type"_"idx)print}' $TRAIN_DIR/run.pid`
         if [ ! -z $EXISTS ]
         then
-           echo -e "\nAready Runing: \n"$EXISTS"\n"
+           echo -e "\nAlready Running: \n"$EXISTS"\n"
            exit
         fi
 

@@ -179,7 +179,7 @@ class Trainer(object):
                                 config=tf.ConfigProto(allow_soft_placement=FLAGS.allow_soft_placement,
                                                       log_device_placement=FLAGS.log_device_placement, )) as sess:
                     logging.info("creating model for  worker:{}", self.task_index)
-                    model = create_model(sess, FLAGS)
+                    model = create_model(sess, FLAGS, model_name=FLAGS.model_name)
                 self._log_variable_info()
                 summary_op = tf.summary.merge_all()
                 init_op = tf.global_variables_initializer()

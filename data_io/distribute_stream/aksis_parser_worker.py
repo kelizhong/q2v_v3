@@ -28,10 +28,6 @@ class AksisParserWorker(Process):
             The ip address string without the port to pass to ``Socket.bind()``.
         batch_size: int
             Batch size for each data batch
-        source_maxlen: int
-            max number of words in each source sequence.
-        target_maxlen: int
-            max number of words in each target sequence.
         frontend_port: int
             Port for the incoming traffic
         backend_port: int

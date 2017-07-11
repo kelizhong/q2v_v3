@@ -8,7 +8,6 @@ python ventilator.py q2v_aksis_ventilator ./data/rawdata --worker-num 30 -ap *ad
 import os
 from argparser.customArgType import FileType
 from argparser.customArgAction import AppendTupleWithoutDefault
-from argparser.subparser import *
 import argparse
 import signal
 from utils.log_util import Logger

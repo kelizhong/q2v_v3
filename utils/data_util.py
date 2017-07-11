@@ -235,23 +235,10 @@ def trigram_encoding(data, trigram_dict, return_data=True):
 # batch preparation of a given sequence pair for training
 def prepare_train_pair_batch(seqs_x, seqs_y, source_maxlen=sys.maxsize, target_maxlen=sys.maxsize, dtype='int32'):
     # seqs_x, seqs_y: a list of sentences
+    seqs_x = list(map(lambda x: x[:source_maxlen], seqs_x))
+    seqs_y = list(map(lambda x: x[:target_maxlen], seqs_y))
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
-
-    new_seqs_x = []
-    new_seqs_y = []
-    new_lengths_x = []
-    new_lengths_y = []
-    for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x, lengths_y, seqs_y):
-        if l_x <= source_maxlen and l_y <= target_maxlen:
-            new_seqs_x.append(s_x)
-            new_lengths_x.append(l_x)
-            new_seqs_y.append(s_y)
-            new_lengths_y.append(l_y)
-    lengths_x = new_lengths_x
-    seqs_x = new_seqs_x
-    lengths_y = new_lengths_y
-    seqs_y = new_seqs_y
 
     if len(lengths_x) < 1 or len(lengths_y) < 1:
         return None, None, None, None
@@ -273,30 +260,22 @@ def prepare_train_pair_batch(seqs_x, seqs_y, source_maxlen=sys.maxsize, target_m
     return x, x_lengths, y, y_lengths
 
 
-def prepare_decode_batch(seqs_x, maxlen=sys.maxsize):
+def prepare_decode_batch(seqs, maxlen=sys.maxsize):
     # seqs_x, seqs_y: a list of sentences
-    lengths_x = [len(s) for s in seqs_x]
+    seqs = list(map(lambda x: x[:maxlen], seqs))
+    lengths = [len(s) for s in seqs]
 
-    new_seqs_x = []
-    new_lengths_x = []
-    for l_x, s_x in zip(lengths_x, seqs_x):
-        if l_x <= maxlen:
-            new_seqs_x.append(s_x)
-            new_lengths_x.append(l_x)
-    lengths_x = new_lengths_x
-    seqs_x = new_seqs_x
-
-    if len(lengths_x) < 1:
+    if len(lengths) < 1:
         return None, None
 
-    batch_size = len(seqs_x)
+    batch_size = len(seqs)
 
-    x_lengths = np.array(lengths_x)
+    lengths = np.array(lengths)
 
-    maxlen_x = np.max(x_lengths)
+    maxlen = np.max(lengths)
 
-    x = np.ones((batch_size, maxlen_x)).astype('int32') * end_token
+    x = np.ones((batch_size, maxlen)).astype('int32') * end_token
 
-    for idx, s_x in enumerate(seqs_x):
-        x[idx, :lengths_x[idx]] = s_x
-    return x, x_lengths
+    for idx, s_x in enumerate(seqs):
+        x[idx, :lengths[idx]] = s_x
+    return x, lengths

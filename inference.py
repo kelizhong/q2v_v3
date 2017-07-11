@@ -31,9 +31,9 @@ class Inference(object):
         self.batch_data.clear_data_object()
         for each in inputs:
             sources, source_tokens, _, _ = self.batch_data.parse_and_insert_data_object(each, None)
+        source_tokens, source_lens = prepare_decode_batch(source_tokens)
         result = None
-        if len(sources) > 0:
-            source_tokens, source_lens = prepare_decode_batch(source_tokens, maxlen=self.source_maxlen)
+        if len(source_tokens) > 0:
             result = self.model.encode(self.sess, source_tokens, source_lens)
         return sources, result
 
@@ -57,9 +57,7 @@ class Inference(object):
         count = 0
         # the left over elements that would be truncated by zip
         for each in zip(*[iter(sources)]*self.batch_size):
-            print(each)
             batch_sources, result = self.encode(each)
-            print(batch_sources)
             if result is not None:
                 sources_list.extend(batch_sources)
                 embedding_list.append(result)
