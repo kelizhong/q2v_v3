@@ -91,11 +91,11 @@ class AksisDataPipeline(object):
                                        name="aksis_parser_worker_{}".format(i))
             worker.start()
 
-    def start_data_ventilitor_process(self):
+    def start_data_ventilator_process(self):
         """start the ventilator process which read the corpus data"""
         for i, (file_pattern, dropout) in enumerate(self.file_patterns):
             ventilator = AksisDataVentilatorProcess(file_pattern, self.data_dir, dropout=dropout,
-                                                    ip=self.ip,
+                                                    ip=self.ip, num_epoch=self.num_epoch,
                                                     port=self.raw_data_frontend_port,
                                                     name="aksis_ventilator_{}".format(i))
             ventilator.start()
@@ -110,6 +110,6 @@ class AksisDataPipeline(object):
     def start_all(self):
         """start all the process"""
         self.start_raw_data_broker()
-        self.start_data_ventilitor_process()
+        self.start_data_ventilator_process()
         self.start_parser_worker_process()
         self.start_collector_process(join=True)
