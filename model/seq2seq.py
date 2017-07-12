@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow.contrib.seq2seq as seq2seq
 
 from tensorflow.python.ops.rnn_cell import GRUCell
-from tensorflow.python.ops.rnn_cell import LSTMCell
+from tensorflow.python.ops.rnn_cell import LSTMCell, LSTMStateTuple
 from tensorflow.python.ops.rnn_cell import MultiRNNCell
 from tensorflow.python.ops.rnn_cell import DropoutWrapper, ResidualWrapper
 
@@ -39,7 +39,7 @@ class Seq2SeqModel(object):
         self.attention_type = config['attention_type']
         self.embedding_size = config['embedding_size']
         # TODO add bidirectional support
-        # self.bidirectional = config.bidirectional
+        self.bidirectional = config['bidirectional']
 
         self.job_type = config['job_type']
 
@@ -57,6 +57,7 @@ class Seq2SeqModel(object):
             self.learning_rate * config['learning_rate_decay_factor'])
         self.latest_train_losses = list()
         self.lr_keep_steps = config['lr_keep_steps']
+        self.is_sync = config['is_sync']
 
         self.max_gradient_norm = config['max_gradient_norm']
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
@@ -88,7 +89,7 @@ class Seq2SeqModel(object):
         logging.info("initializing placeholders")
         # TODO use MutableHashTable to store word->id mapping in checkpoint
         # encoder_inputs: [batch_size, max_time_steps]
-        self.encoder_inputs = tf.placeholder(dtype=tf.int32,
+        self.encoder_inputs = tf.placeholder(dtype=tf.int64,
                                              shape=(None, None), name='encoder_inputs')
 
         # encoder_inputs_length: [batch_size]
@@ -136,12 +137,10 @@ class Seq2SeqModel(object):
 
     def build_encoder(self):
         logging.info("building encoder..")
-        with tf.variable_scope('encoder'):
-            # Building encoder_cell
-            self.encoder_cell = self.build_encoder_cell()
-
+        with tf.variable_scope('encoder', dtype=self.dtype) as scope:
+            logging.info("building bidirectional encoder")
             # Embedded_inputs: [batch_size, time_step, embedding_size]
-            self.encoder_inputs_embedded = tf.nn.embedding_lookup(
+            encoder_inputs_embedded = tf.nn.embedding_lookup(
                 params=self.embeddings, ids=self.encoder_inputs)
 
             # Input projection layer to feed embedded inputs to the cell
@@ -149,19 +148,46 @@ class Seq2SeqModel(object):
             input_layer = Dense(self.hidden_units, dtype=self.dtype, name='input_projection')
 
             # Embedded inputs having gone through input projection layer
-            self.encoder_inputs_embedded = input_layer(self.encoder_inputs_embedded)
+            encoder_inputs_embedded = input_layer(encoder_inputs_embedded)
 
-            # Encode input sequences into context vectors:
-            # encoder_outputs: [batch_size, max_time_step, cell_output_size]
-            # encoder_state: [batch_size, cell_output_size]
-            self.encoder_outputs, self.encoder_last_state = tf.nn.dynamic_rnn(
-                cell=self.encoder_cell, inputs=self.encoder_inputs_embedded,
-                sequence_length=self.encoder_inputs_length, dtype=self.dtype,
-                time_major=False)
+            if self.bidirectional:
+                fw_encoder_cell = self.build_encoder_cell()
+                bw_encoder_cell = self.build_encoder_cell()
+                self.encoder_outputs, self.encoder_last_state = tf.nn.bidirectional_dynamic_rnn(
+                    cell_fw=fw_encoder_cell, cell_bw=bw_encoder_cell,
+                    inputs=encoder_inputs_embedded,
+                    sequence_length=self.encoder_inputs_length,
+                    dtype=self.dtype,
+                    parallel_iterations=16,
+                    scope=scope)
+
+                fw_state, bw_state = self.encoder_last_state
+                self.encoder_last_state = []
+                for f, b in zip(fw_state, bw_state):
+                    if isinstance(f, LSTMStateTuple):
+                        self.encoder_last_state.append(LSTMStateTuple(tf.concat([f.c, b.c], axis=1), tf.concat([f.h, b.h], axis=1)))
+                    else:
+                        self.encoder_last_state.append(tf.concat([f, b], 1))
+                self.encoder_outputs = tf.concat([self.encoder_outputs[0], self.encoder_outputs[1]], axis=2)
+                output_size = fw_encoder_cell.output_size + bw_encoder_cell.output_size
+            else:
+                # Building encoder_cell
+                encoder_cell = self.build_encoder_cell()
+
+                # Encode input sequences into context vectors:
+                # encoder_outputs: [batch_size, max_time_step, cell_output_size]
+                # encoder_state: [batch_size, cell_output_size]
+                self.encoder_outputs, self.encoder_last_state = tf.nn.dynamic_rnn(
+                    cell=encoder_cell, inputs=encoder_inputs_embedded,
+                    sequence_length=self.encoder_inputs_length, dtype=self.dtype,
+                    time_major=False)
+                output_size = encoder_cell.output_size
+
+            self.encoder_state_size = output_size
 
             if self.mode == 'encode':
                 # last_output: [batch_size, cell_output_size]
-                self.src_last_output = self._last_output(self.encoder_outputs, self.encoder_cell.output_size,
+                self.src_last_output = self._last_output(self.encoder_outputs, output_size,
                                                          self.source_partitions)
 
     def build_decoder(self):
@@ -169,11 +195,11 @@ class Seq2SeqModel(object):
 
         with tf.variable_scope('decoder'):
             # Building decoder_cell and decoder_initial_state
-            self.decoder_cell, self.decoder_initial_state = self.build_decoder_cell()
+            self.decoder_cell, self.decoder_initial_state, decoder_hidden_units = self.build_decoder_cell()
 
             # Input projection layer to feed embedded inputs to the cell
             # ** Essential when use_residual=True to match input/output dims
-            input_layer = Dense(self.hidden_units, dtype=self.dtype, name='input_projection')
+            input_layer = Dense(decoder_hidden_units, dtype=self.dtype, name='input_projection')
 
             # Output projection layer to convert cell_outputs to logits
             output_layer = Dense(self.vocabulary_size, name='output_projection')
@@ -302,11 +328,11 @@ class Seq2SeqModel(object):
                     # decoder_pred_decode: [batch_size, max_time_step, beam_width] (output_major=False)
                     self.decoder_pred_decode = self.decoder_outputs_decode.predicted_ids
 
-    def build_single_cell(self):
+    def build_single_cell(self, hidden_units):
         cell_type = LSTMCell
         if self.cell_type.lower() == 'gru':
             cell_type = GRUCell
-        cell = cell_type(self.hidden_units)
+        cell = cell_type(hidden_units)
 
         if self.use_dropout:
             cell = DropoutWrapper(cell, dtype=self.dtype,
@@ -319,7 +345,7 @@ class Seq2SeqModel(object):
     # Building encoder cell
     def build_encoder_cell(self):
 
-        return MultiRNNCell([self.build_single_cell() for _ in range(self.num_layers)])
+        return MultiRNNCell([self.build_single_cell(self.hidden_units) for _ in range(self.num_layers)])
 
     # Building decoder cell and attention. Also returns decoder_initial_state
     def build_decoder_cell(self):
@@ -327,6 +353,7 @@ class Seq2SeqModel(object):
         encoder_outputs = self.encoder_outputs
         encoder_last_state = self.encoder_last_state
         encoder_inputs_length = self.encoder_inputs_length
+        decoder_hidden_units = self.encoder_state_size
 
         # To use BeamSearchDecoder, encoder_outputs, encoder_last_state, encoder_inputs_length
         # needs to be tiled so that: [batch_size, .., ..] -> [batch_size x beam_width, .., ..]
@@ -342,17 +369,17 @@ class Seq2SeqModel(object):
         # Building attention mechanism: Default Bahdanau
         # 'Bahdanau' style attention: https://arxiv.org/abs/1409.0473
         self.attention_mechanism = attention_wrapper.BahdanauAttention(
-            num_units=self.hidden_units, memory=encoder_outputs,
+            num_units=decoder_hidden_units, memory=encoder_outputs,
             memory_sequence_length=encoder_inputs_length, )
         # 'Luong' style attention: https://arxiv.org/abs/1508.04025
         if self.attention_type.lower() == 'luong':
             self.attention_mechanism = attention_wrapper.LuongAttention(
-                num_units=self.hidden_units, memory=encoder_outputs,
+                num_units=decoder_hidden_units, memory=encoder_outputs,
                 memory_sequence_length=encoder_inputs_length, )
 
         # Building decoder_cell
         self.decoder_cell_list = [
-            self.build_single_cell() for _ in range(self.num_layers)]
+            self.build_single_cell(decoder_hidden_units) for _ in range(self.num_layers)]
         decoder_initial_state = encoder_last_state
 
         def attn_decoder_input_fn(inputs, attention):
@@ -360,7 +387,7 @@ class Seq2SeqModel(object):
                 return inputs
 
             # Essential when use_residual=True
-            _input_layer = Dense(self.hidden_units, dtype=self.dtype,
+            _input_layer = Dense(decoder_hidden_units, dtype=self.dtype,
                                  name='attn_input_feeding')
             return _input_layer(array_ops.concat([inputs, attention], -1))
 
@@ -369,7 +396,7 @@ class Seq2SeqModel(object):
         self.decoder_cell_list[-1] = attention_wrapper.AttentionWrapper(
             cell=self.decoder_cell_list[-1],
             attention_mechanism=self.attention_mechanism,
-            attention_layer_size=self.hidden_units,
+            attention_layer_size=decoder_hidden_units,
             cell_input_fn=attn_decoder_input_fn,
             initial_cell_state=encoder_last_state[-1],
             alignment_history=False,
@@ -389,12 +416,11 @@ class Seq2SeqModel(object):
             batch_size=batch_size, dtype=self.dtype)
         decoder_initial_state = tuple(initial_state)
 
-        return MultiRNNCell(self.decoder_cell_list), decoder_initial_state
+        return MultiRNNCell(self.decoder_cell_list), decoder_initial_state, decoder_hidden_units
 
     def init_optimizer(self):
         logging.info("setting optimizer..")
         # Gradients and SGD update operation for training the model
-        trainable_params = tf.trainable_variables()
         if self.optimizer.lower() == 'adadelta':
             self.opt = tf.train.AdadeltaOptimizer(learning_rate=self.learning_rate)
         elif self.optimizer.lower() == 'adam':
@@ -407,9 +433,8 @@ class Seq2SeqModel(object):
             self.opt = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
 
         # Compute gradients of loss w.r.t. all trainable variables
-        # gradients = tf.gradients(self.loss, trainable_params)
 
-        if self.job_type == "worker":
+        if self.job_type == "worker" and self.is_sync:
             self.opt = tf.train.SyncReplicasOptimizer(self.opt,
                                                     replicas_to_aggregate=15,
                                                     total_num_replicas=15,
@@ -417,14 +442,16 @@ class Seq2SeqModel(object):
                                                     )
             grads_and_vars = self.opt.compute_gradients(loss=self.loss)
             gradients, variables = zip(*grads_and_vars)
-            self.init_token_op = self.opt.get_init_tokens_op()
-            self.chief_queue_runner = self.opt.get_chief_queue_runner()
         else:
             gradients = tf.gradients(self.loss, tf.trainable_variables(), aggregation_method=2)
             variables = tf.trainable_variables()
 
-        clipped_gradients, _  = tf.clip_by_global_norm(gradients, self.max_gradient_norm)
+        clipped_gradients, _ = tf.clip_by_global_norm(gradients, self.max_gradient_norm)
         self.updates = self.opt.apply_gradients(zip(clipped_gradients, variables), self.global_step)
+
+        if self.job_type == "worker":
+            self.init_token_op = self.opt.get_init_tokens_op()
+            self.chief_queue_runner = self.opt.get_chief_queue_runner()
 
         # Clip gradients by a given maximum_gradient_norm
         # clip_gradients, _ = tf.clip_by_global_norm(gradients, self.max_gradient_norm)

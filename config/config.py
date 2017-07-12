@@ -28,12 +28,13 @@ tf.app.flags.DEFINE_string("worker_hosts", "0.0.0.0:2222",
                            "Comma-separated list of hostname:port pairs")
 tf.app.flags.DEFINE_string("job_type", "single", "One of 'ps', 'worker', 'single")
 tf.app.flags.DEFINE_integer("task_index", 0, "Index of task within the job")
-tf.app.flags.DEFINE_boolean("is_sync", False, "whether to synchronize, aggregate gradients")
+tf.app.flags.DEFINE_boolean("is_sync", True, "whether to synchronize, aggregate gradients")
 
 # Network parameters
+tf.app.flags.DEFINE_boolean('bidirectional', True, 'Enable bidirectional encoder')
 tf.app.flags.DEFINE_string('cell_type', 'lstm', 'RNN cell for encoder and decoder, default: lstm')
 tf.app.flags.DEFINE_string('attention_type', 'bahdanau', 'Attention mechanism: (bahdanau, luong), default: bahdanau')
-tf.app.flags.DEFINE_integer('hidden_units', 256, 'Number of hidden units in each layer')
+tf.app.flags.DEFINE_integer('hidden_units', 128, 'Number of hidden units in each layer')
 tf.app.flags.DEFINE_integer('num_layers', 3, 'Number of layers in each encoder and decoder')
 tf.app.flags.DEFINE_integer('embedding_size', 64, 'Embedding dimensions of encoder and decoder inputs')
 tf.app.flags.DEFINE_integer("vocabulary_size", 64005, "Sequence vocabulary size in the mapping task.")
@@ -46,7 +47,7 @@ tf.app.flags.DEFINE_float('dropout_rate', 0.3, 'Dropout probability for input/ou
 # Training parameters
 tf.app.flags.DEFINE_float('learning_rate', 0.002, 'Learning rate')
 tf.app.flags.DEFINE_integer('lr_keep_steps', 300, 'run `lr_keep_steps` step, before to start to adjust learning rate')
-tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99, "Learning rate decays by this much.")
+tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.95, "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float('max_gradient_norm', 5.0, 'Clip gradients to this norm')
 tf.app.flags.DEFINE_integer('batch_size', 128, 'Batch size')
 tf.app.flags.DEFINE_integer('display_freq', 1, 'Display training status every this iteration')
