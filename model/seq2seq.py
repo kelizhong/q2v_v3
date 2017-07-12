@@ -68,6 +68,8 @@ class Seq2SeqModel(object):
         self.dtype = tf.float16 if config['use_fp16'] else tf.float32
         self.keep_prob_placeholder = tf.placeholder(self.dtype, shape=[], name='keep_prob')
 
+        self.worker_hosts_size = len(config['worker_hosts'].split(",")) if config['worker_hosts'] else 0
+
         self.use_beamsearch_decode = False
         if self.mode == 'decode':
             self.beam_width = config['beam_width']
@@ -436,8 +438,8 @@ class Seq2SeqModel(object):
 
         if self.job_type == "worker" and self.is_sync:
             self.opt = tf.train.SyncReplicasOptimizer(self.opt,
-                                                    replicas_to_aggregate=15,
-                                                    total_num_replicas=15,
+                                                    replicas_to_aggregate=self.worker_hosts_size,
+                                                    total_num_replicas=self.worker_hosts_size,
                                                     use_locking=True
                                                     )
             grads_and_vars = self.opt.compute_gradients(loss=self.loss)
