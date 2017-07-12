@@ -8,7 +8,7 @@ import logbook as logging
 import zmq
 from zmq.decorators import socket
 from utils.appmetric_util import AppMetric
-from utils.data_util import negative_sampling_train_data_generator
+from utils.data_util import query_title_score_generator_from_aksis_data
 
 
 class AksisDataVentilatorProcess(Process):
@@ -35,7 +35,7 @@ class AksisDataVentilatorProcess(Process):
 
     def __init__(self, file_pattern, data_dir,
                  num_epoch=65535, dropout=-1, ip='127.0.0.1', port=5555,
-                 metric_interval=30, neg_number=5, name='VentilatorProcess'):
+                 metric_interval=30, name='VentilatorProcess'):
         Process.__init__(self)
         self.file_pattern = file_pattern
         self.data_dir = data_dir
@@ -45,7 +45,6 @@ class AksisDataVentilatorProcess(Process):
         self.ip = ip
         self.port = port
         self.metric_interval = metric_interval
-        self.neg_number = neg_number
         self.name = name
 
     # pylint: disable=arguments-differ, no-member
@@ -75,6 +74,5 @@ class AksisDataVentilatorProcess(Process):
                                                                                           self.data_dir))
         action_files = [os.path.join(self.data_dir, filename) for filename in data_files]
 
-        for source, target, label in negative_sampling_train_data_generator(action_files, self.neg_number,
-                                                                            self.dropout):
-            yield source, target, label
+        for source, target in query_title_score_generator_from_aksis_data(action_files, self.dropout):
+            yield source, target

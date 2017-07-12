@@ -219,6 +219,7 @@ class Trainer(object):
                     # Execute a single training step
                     step_loss = model.train(sess, encoder_inputs=sources, encoder_inputs_length=source_lens,
                                             decoder_inputs=targets, decoder_inputs_length=target_lens)
+                    model.adjust_lr_rate(sess, step_loss)
                     time_elapsed = time.time() - start_time
                     step_time = time_elapsed / self.display_freq
                     loss += step_loss / self.display_freq
@@ -234,7 +235,7 @@ class Trainer(object):
                         sents_per_sec = sents_done / time_elapsed
                         logging.info(
                             "global step %d, learning rate %.4f, step-time:%.2f, step-loss:%.4f, loss:%.4f, perplexity:%.4f, %.4f sents/s, %.4f words/s" %
-                            (model.global_step.eval(), model.learning_rate, step_time, step_loss, loss, avg_perplexity,
+                            (model.global_step.eval(), model.learning_rate.eval(), step_time, step_loss, loss, avg_perplexity,
                              sents_per_sec, words_per_sec))
                         # set zero timer and loss.
                         words_done, sents_done, loss = 0.0, 0.0, 0.0

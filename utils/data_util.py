@@ -19,12 +19,6 @@ _WORD_SPLIT = re.compile(b"([.,!?\"';-@#)(])")
 _DIGIT_RE = re.compile(br"\d")
 
 
-@unique
-class aksis_data_label(Enum):
-    negative_label = 0
-    positive_label = 1
-
-
 def sentence_gen(files):
     """Generator that yield each sentence in a line.
     Parameters
@@ -87,15 +81,6 @@ def query_title_score_generator_from_aksis_data(files, dropout=-1):
             if not is_hit(score, dropout):
                 continue
             yield query, title
-
-
-def negative_sampling_train_data_generator(files, neg_number, dropout=-1):
-    rs = RandomSet()
-    for query, title in query_title_score_generator_from_aksis_data(files, dropout):
-        rs.add(title)
-        yield query, title, aksis_data_label.positive_label.value
-        for neg_title in rs.get_n_items(neg_number):
-            yield query, neg_title, aksis_data_label.negative_label.value
 
 
 def is_hit(score, dropout):

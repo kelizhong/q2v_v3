@@ -47,7 +47,13 @@ class Seq2SeqModel(object):
         self.keep_prob = 1.0 - config['dropout_rate']
 
         self.optimizer = config['optimizer']
-        self.learning_rate = config['learning_rate']
+        self.learning_rate = tf.Variable(float(config['learning_rate']),
+                                         trainable=False, name="learning_rate")
+        self.learning_rate_decay_op = self.learning_rate.assign(
+            self.learning_rate * config['learning_rate_decay_factor'])
+        self.latest_train_losses = list()
+        self.lr_keep_steps = config['lr_keep_steps']
+
         self.max_gradient_norm = config['max_gradient_norm']
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
         self.global_epoch_step = tf.Variable(0, trainable=False, name='global_epoch_step')
@@ -405,6 +411,15 @@ class Seq2SeqModel(object):
         # Update the model
         self.updates = self.opt.apply_gradients(
             zip(gradients, trainable_params), global_step=self.global_step)
+
+    def adjust_lr_rate(self, sess, step_loss):
+        self.latest_train_losses.append(step_loss)
+        if step_loss < self.latest_train_losses[0]:
+            self.latest_train_losses = self.latest_train_losses[-1:]
+        if self.global_step.eval() > self.lr_keep_steps and len(self.latest_train_losses) == self.lr_keep_steps:
+            logging.info("adjust learning rate to {}", self.learning_rate.eval())
+            sess.run(self.learning_rate_decay_op)
+            self.latest_train_losses = []
 
     def save(self, sess, path, var_list=None, global_step=None):
         # var_list = None returns the list of all saveable variables
