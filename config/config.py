@@ -44,10 +44,10 @@ tf.app.flags.DEFINE_boolean('use_dropout', True, 'Use dropout in each rnn cell')
 tf.app.flags.DEFINE_float('dropout_rate', 0.3, 'Dropout probability for input/output/state units (0.0: no dropout)')
 
 # Training parameters
-tf.app.flags.DEFINE_float('learning_rate', 0.02, 'Learning rate')
-tf.app.flags.DEFINE_integer('lr_keep_steps', 3000, 'run `lr_keep_steps` step, before to start to adjust learning rate')
+tf.app.flags.DEFINE_float('learning_rate', 0.002, 'Learning rate')
+tf.app.flags.DEFINE_integer('lr_keep_steps', 300, 'run `lr_keep_steps` step, before to start to adjust learning rate')
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99, "Learning rate decays by this much.")
-tf.app.flags.DEFINE_float('max_gradient_norm', 1.0, 'Clip gradients to this norm')
+tf.app.flags.DEFINE_float('max_gradient_norm', 5.0, 'Clip gradients to this norm')
 tf.app.flags.DEFINE_integer('batch_size', 128, 'Batch size')
 tf.app.flags.DEFINE_integer('display_freq', 1, 'Display training status every this iteration')
 tf.app.flags.DEFINE_string('optimizer', 'adam', 'Optimizer for training: (adadelta, adam, rmsprop, cocob)')

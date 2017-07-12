@@ -197,7 +197,7 @@ class Trainer(object):
                                             intra_op_parallelism_threads=16)
             with sv.prepare_or_wait_for_session(master=self.master, config=session_config) as sess:
                 # TODO andd tensorboard support
-                if self.task_index == 0 and self.is_sync:
+                if self.task_index == 0:
                     # TODO and synchronize optimizer
                     sv.start_queue_runners(sess, [model.chief_queue_runner])
                     sess.run(model.init_token_op)

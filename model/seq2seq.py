@@ -20,6 +20,8 @@ from tensorflow.contrib.seq2seq.python.ops import beam_search_decoder
 from config.config import start_token, end_token
 
 from external.optimizer.cocob_optimizer import COCOB
+from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
+
 import logbook as logging
 
 
@@ -38,6 +40,8 @@ class Seq2SeqModel(object):
         self.embedding_size = config['embedding_size']
         # TODO add bidirectional support
         # self.bidirectional = config.bidirectional
+
+        self.job_type = config['job_type']
 
         self.vocabulary_size = config['vocabulary_size']
 
@@ -403,20 +407,38 @@ class Seq2SeqModel(object):
             self.opt = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
 
         # Compute gradients of loss w.r.t. all trainable variables
-        gradients = tf.gradients(self.loss, trainable_params)
+        # gradients = tf.gradients(self.loss, trainable_params)
+
+        if self.job_type == "worker":
+            self.opt = tf.train.SyncReplicasOptimizer(self.opt,
+                                                    replicas_to_aggregate=15,
+                                                    total_num_replicas=15,
+                                                    use_locking=True
+                                                    )
+            grads_and_vars = self.opt.compute_gradients(loss=self.loss)
+            gradients, variables = zip(*grads_and_vars)
+            self.init_token_op = self.opt.get_init_tokens_op()
+            self.chief_queue_runner = self.opt.get_chief_queue_runner()
+        else:
+            gradients = tf.gradients(self.loss, tf.trainable_variables(), aggregation_method=2)
+            variables = tf.trainable_variables()
+
+        clipped_gradients, _  = tf.clip_by_global_norm(gradients, self.max_gradient_norm)
+        self.updates = self.opt.apply_gradients(zip(clipped_gradients, variables), self.global_step)
 
         # Clip gradients by a given maximum_gradient_norm
-        clip_gradients, _ = tf.clip_by_global_norm(gradients, self.max_gradient_norm)
+        # clip_gradients, _ = tf.clip_by_global_norm(gradients, self.max_gradient_norm)
 
         # Update the model
-        self.updates = self.opt.apply_gradients(
-            zip(gradients, trainable_params), global_step=self.global_step)
+        #self.updates = self.opt.apply_gradients(
+        #     zip(gradients, trainable_params), global_step=self.global_step)
 
     def adjust_lr_rate(self, sess, step_loss):
+
         self.latest_train_losses.append(step_loss)
         if step_loss < self.latest_train_losses[0]:
             self.latest_train_losses = self.latest_train_losses[-1:]
-        if self.global_step.eval() > self.lr_keep_steps and len(self.latest_train_losses) == self.lr_keep_steps:
+        if len(self.latest_train_losses) % self.lr_keep_steps == 0:
             logging.info("adjust learning rate to {}", self.learning_rate.eval())
             sess.run(self.learning_rate_decay_op)
             self.latest_train_losses = []
