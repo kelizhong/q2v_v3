@@ -51,21 +51,21 @@ class Seq2SeqModel(object):
         self.use_dropout = config['use_dropout']
         self.keep_prob = 1.0 - config['dropout_rate']
 
-        self.optimizer = config['optimizer']
-        self.learning_rate = tf.Variable(float(config['learning_rate']),
-                                         trainable=False, name="learning_rate")
-        self.learning_rate_decay_op = self.learning_rate.assign(
-            self.learning_rate * config['learning_rate_decay_factor'])
-
-        self.latest_train_losses = list()
-        self.lr_keep_steps = config['lr_keep_steps']
-        self.is_sync = config['is_sync']
-
-        self.max_gradient_norm = config['max_gradient_norm']
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
         self.global_epoch_step = tf.Variable(0, trainable=False, name='global_epoch_step')
         self.global_epoch_step_op = \
             tf.assign(self.global_epoch_step, self.global_epoch_step + 1)
+
+        self.optimizer = config['optimizer']
+        self.learning_rate = tf.maximum(
+            config['min_learning_rate'],  # min_lr_rate.
+            tf.train.exponential_decay(config['learning_rate'], self.global_step, config['decay_steps'], config['lr_decay_factor']))
+
+        self.latest_train_losses = list()
+        self.is_sync = config['is_sync']
+
+        self.max_gradient_norm = config['max_gradient_norm']
+
 
         self.dtype = tf.float16 if config['use_fp16'] else tf.float32
         self.keep_prob_placeholder = tf.placeholder(self.dtype, shape=[], name='keep_prob')
@@ -477,25 +477,6 @@ class Seq2SeqModel(object):
             tf.summary.scalar('max/' + name, tf.reduce_max(var))
             tf.summary.scalar('min/' + name, tf.reduce_min(var))
             tf.summary.histogram(name, var)
-
-    def adjust_lr_rate(self, sess, step_loss):
-        """adjust learning rate
-        # TODO implement below method to adjust lr, or use cocob optimizer(currently not support distributed training)
-        self._lr_rate = tf.maximum(
-            hps.min_lr,  # min_lr_rate.
-            tf.train.exponential_decay(hps.lr, self.global_step, 30000, 0.98))
-        """
-        if self.optimizer.lower() == 'cocob':
-            logging.info("cocob optimizer do not need learning rate")
-            return
-        self.latest_train_losses.append(step_loss)
-        if step_loss < self.latest_train_losses[0]:
-            self.latest_train_losses = self.latest_train_losses[-1:]
-        if len(self.latest_train_losses) % self.lr_keep_steps == 0:
-            logging.info("adjust learning rate to {}", self.learning_rate.eval())
-            sess.run(self.learning_rate_decay_op)
-
-            self.latest_train_losses = []
 
     def save(self, sess, path, var_list=None, global_step=None):
         # var_list = None returns the list of all saveable variables
