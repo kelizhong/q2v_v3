@@ -61,10 +61,13 @@ class AksisParserWorker(Process):
         pull_stream = ZMQStream(receiver, loop)
 
         def _on_recv(msg):
-            source, target = pickle.loads(msg[0])
-            self.batch_data.parse_and_insert_data_object(source, target)
-            if self.batch_data.data_object_length == self.batch_size:
-                sender.send_pyobj(self.batch_data.data_object)
+            try:
+                source, target = pickle.loads(msg[0])
+                self.batch_data.parse_and_insert_data_object(source, target)
+                if self.batch_data.data_object_length == self.batch_size:
+                    sender.send_pyobj(self.batch_data.data_object)
+            except Exception as e:
+                logging.info("{} failed to load msg. Error: {}", self.name, e)
 
         pull_stream.on_recv(_on_recv)
         loop.start()
