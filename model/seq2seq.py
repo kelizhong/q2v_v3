@@ -27,6 +27,9 @@ import logbook as logging
 class Seq2SeqModel(object):
     def __init__(self, config, mode):
 
+        # train: train seq2seq model
+        # decode: given a source sequence and decode a output
+        # encode: convert a source sequence into a vector
         assert mode.lower() in ['train', 'decode', 'encode']
 
         self.config = config
@@ -37,7 +40,6 @@ class Seq2SeqModel(object):
         self.num_layers = config['num_layers']
         self.attention_type = config['attention_type']
         self.embedding_size = config['embedding_size']
-        # TODO add bidirectional support
         self.bidirectional = config['bidirectional']
 
         self.job_type = config['job_type']
@@ -138,9 +140,9 @@ class Seq2SeqModel(object):
                                               initializer=tf.contrib.layers.xavier_initializer(), dtype=self.dtype)
 
     def build_encoder(self):
-        logging.info("building encoder..")
+
         with tf.variable_scope('encoder', dtype=self.dtype) as scope:
-            logging.info("building bidirectional encoder")
+            logging.info("building bidirectional encoder..")
             # Embedded_inputs: [batch_size, time_step, embedding_size]
             encoder_inputs_embedded = tf.nn.embedding_lookup(
                 params=self.embeddings, ids=self.encoder_inputs)
@@ -174,6 +176,7 @@ class Seq2SeqModel(object):
                 self.encoder_outputs = tf.concat([self.encoder_outputs[0], self.encoder_outputs[1]], axis=2)
                 output_size = fw_encoder_cell.output_size + bw_encoder_cell.output_size
             else:
+                logging.info("building encoder..")
                 # Building encoder_cell
                 encoder_cell = self.build_encoder_cell()
 

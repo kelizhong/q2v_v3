@@ -124,7 +124,14 @@ class Trainer(object):
     @memoized
     def device(self):
         if self.job_type == "worker":
+            # TODO try tf.contrib.training.GreedyLoadBalancingStrategy
+            # TODO What may happen sometimes is that a single variable is huge,
+            # in which case you would need to break variable into smaller pieces first manually
+            # or using PartitionedVariable
+            ps_strategy = tf.contrib.training.GreedyLoadBalancingStrategy(
+                len(self.ps_hosts), tf.contrib.training.byte_size_load_fn)
             device = tf.train.replica_device_setter(cluster=self.cluster,
+                                                    ps_strategy=ps_strategy,
                                                     worker_device='job:worker/task:%d/%s' % (
                                                         self.task_index, self.core_str),
                                                     ps_device='job:ps/task:%d/%s' % (self.task_index, self.core_str))
@@ -188,7 +195,7 @@ class Trainer(object):
                                      saver=model.saver,
                                      global_step=model.global_step,
                                      save_model_secs=60)
-            gpu_options = tf.GPUOptions(allow_growth=True)
+            gpu_options = tf.GPUOptions(allow_growth=True, allocator_type="BFC")  # BFC: avoid out of memory
             session_config = tf.ConfigProto(allow_soft_placement=FLAGS.allow_soft_placement,
                                             log_device_placement=FLAGS.log_device_placement,
                                             gpu_options=gpu_options,
@@ -196,7 +203,6 @@ class Trainer(object):
             with sv.prepare_or_wait_for_session(master=self.master, config=session_config) as sess:
                 # TODO add tensorboard support
                 if self.task_index == 0 and self.is_sync and self.job_type == 'worker':
-                    # TODO and synchronize optimizer
                     sv.start_queue_runners(sess, [model.chief_queue_runner])
                     sess.run(model.init_token_op)
 
