@@ -20,7 +20,6 @@ from tensorflow.contrib.seq2seq.python.ops import beam_search_decoder
 from config.config import start_token, end_token
 
 from external.optimizer.cocob_optimizer import COCOB
-from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
 
 import logbook as logging
 
@@ -55,6 +54,7 @@ class Seq2SeqModel(object):
                                          trainable=False, name="learning_rate")
         self.learning_rate_decay_op = self.learning_rate.assign(
             self.learning_rate * config['learning_rate_decay_factor'])
+
         self.latest_train_losses = list()
         self.lr_keep_steps = config['lr_keep_steps']
         self.is_sync = config['is_sync']
@@ -91,7 +91,7 @@ class Seq2SeqModel(object):
         logging.info("initializing placeholders")
         # TODO use MutableHashTable to store word->id mapping in checkpoint
         # encoder_inputs: [batch_size, max_time_steps]
-        self.encoder_inputs = tf.placeholder(dtype=tf.int64,
+        self.encoder_inputs = tf.placeholder(dtype=tf.int32,
                                              shape=(None, None), name='encoder_inputs')
 
         # encoder_inputs_length: [batch_size]
@@ -135,7 +135,7 @@ class Seq2SeqModel(object):
         initializer = tf.random_uniform_initializer(-sqrt3, sqrt3, dtype=self.dtype)
         with tf.variable_scope('shared'):
             self.embeddings = tf.get_variable(name='embedding', shape=[self.vocabulary_size, self.embedding_size],
-                                              initializer=initializer, dtype=self.dtype)
+                                              initializer=tf.contrib.layers.xavier_initializer(), dtype=self.dtype)
 
     def build_encoder(self):
         logging.info("building encoder..")
@@ -159,6 +159,7 @@ class Seq2SeqModel(object):
                     cell_fw=fw_encoder_cell, cell_bw=bw_encoder_cell,
                     inputs=encoder_inputs_embedded,
                     sequence_length=self.encoder_inputs_length,
+                    time_major=False,
                     dtype=self.dtype,
                     parallel_iterations=16,
                     scope=scope)
@@ -182,7 +183,7 @@ class Seq2SeqModel(object):
                 self.encoder_outputs, self.encoder_last_state = tf.nn.dynamic_rnn(
                     cell=encoder_cell, inputs=encoder_inputs_embedded,
                     sequence_length=self.encoder_inputs_length, dtype=self.dtype,
-                    time_major=False)
+                    time_major=False, parallel_iterations=16,scope=scope)
                 output_size = encoder_cell.output_size
 
             self.encoder_state_size = output_size
@@ -259,6 +260,11 @@ class Seq2SeqModel(object):
                                                   weights=masks,
                                                   average_across_timesteps=True,
                                                   average_across_batch=True, )
+
+                # Create a summary to monitor cost tensor, due to "shape has negative dimensions" problem, will
+                # implement the summary next version
+                # https://stackoverflow.com/questions/44706840/tensorflow-summery-merge-error-shape-1-784-has-negative-dimensions
+                # self.variable_summaries('loss', self.loss)
 
                 # Contruct graphs for minimizing loss
                 self.init_optimizer()
@@ -422,6 +428,7 @@ class Seq2SeqModel(object):
 
     def init_optimizer(self):
         logging.info("setting optimizer..")
+
         # Gradients and SGD update operation for training the model
         if self.optimizer.lower() == 'adadelta':
             self.opt = tf.train.AdadeltaOptimizer(learning_rate=self.learning_rate)
@@ -455,21 +462,36 @@ class Seq2SeqModel(object):
             self.init_token_op = self.opt.get_init_tokens_op()
             self.chief_queue_runner = self.opt.get_chief_queue_runner()
 
-        # Clip gradients by a given maximum_gradient_norm
-        # clip_gradients, _ = tf.clip_by_global_norm(gradients, self.max_gradient_norm)
-
-        # Update the model
-        #self.updates = self.opt.apply_gradients(
-        #     zip(gradients, trainable_params), global_step=self.global_step)
+    @staticmethod
+    def variable_summaries(name, var):
+        """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+        with tf.name_scope('summaries'):
+            mean = tf.reduce_mean(var)
+            tf.summary.scalar('mean/' + name, mean)
+            with tf.name_scope('stddev'):
+                stddev = tf.sqrt(tf.reduce_sum(tf.square(var - mean)))
+            tf.summary.scalar('stddev/' + name, stddev)
+            tf.summary.scalar('max/' + name, tf.reduce_max(var))
+            tf.summary.scalar('min/' + name, tf.reduce_min(var))
+            tf.summary.histogram(name, var)
 
     def adjust_lr_rate(self, sess, step_loss):
-
+        """adjust learning rate
+        # TODO implement below method to adjust lr, or use cocob optimizer(currently not support distributed training)
+        self._lr_rate = tf.maximum(
+            hps.min_lr,  # min_lr_rate.
+            tf.train.exponential_decay(hps.lr, self.global_step, 30000, 0.98))
+        """
+        if self.optimizer.lower() == 'cocob':
+            logging.info("cocob optimizer do not need learning rate")
+            return
         self.latest_train_losses.append(step_loss)
         if step_loss < self.latest_train_losses[0]:
             self.latest_train_losses = self.latest_train_losses[-1:]
         if len(self.latest_train_losses) % self.lr_keep_steps == 0:
             logging.info("adjust learning rate to {}", self.learning_rate.eval())
             sess.run(self.learning_rate_decay_op)
+
             self.latest_train_losses = []
 
     def save(self, sess, path, var_list=None, global_step=None):
@@ -514,7 +536,7 @@ class Seq2SeqModel(object):
         input_feed[self.keep_prob_placeholder.name] = self.keep_prob
 
         output_feed = [self.updates,  # Update Op that does optimization
-                       self.loss]  # Loss for this batch
+                       self.loss] # Loss for this batch
 
         outputs = sess.run(output_feed, input_feed)
         return outputs[1]  # loss

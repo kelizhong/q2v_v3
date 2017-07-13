@@ -47,9 +47,9 @@ tf.app.flags.DEFINE_float('dropout_rate', 0.3, 'Dropout probability for input/ou
 # Training parameters
 tf.app.flags.DEFINE_float('learning_rate', 0.002, 'Learning rate')
 tf.app.flags.DEFINE_integer('lr_keep_steps', 300, 'run `lr_keep_steps` step, before to start to adjust learning rate')
-tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.95, "Learning rate decays by this much.")
+tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99, "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float('max_gradient_norm', 5.0, 'Clip gradients to this norm')
-tf.app.flags.DEFINE_integer('batch_size', 128, 'Batch size')
+tf.app.flags.DEFINE_integer('batch_size', 1, 'Batch size')
 tf.app.flags.DEFINE_integer('display_freq', 1, 'Display training status every this iteration')
 tf.app.flags.DEFINE_string('optimizer', 'adam', 'Optimizer for training: (adadelta, adam, rmsprop, cocob)')
 tf.app.flags.DEFINE_string("model_dir", os.path.join(project_dir, 'data/models'), "Trained model directory.")
@@ -68,5 +68,6 @@ tf.app.flags.DEFINE_integer("target_maxlen", 80, "max number of words/tokens in 
 
 tf.app.flags.DEFINE_integer("beam_width", 0, "beam width")
 tf.app.flags.DEFINE_integer("max_decode_step", 3, "max_decode_step")
+tf.app.flags.DEFINE_boolean('debug', False, 'Enable debug')
 
 FLAGS = tf.app.flags.FLAGS

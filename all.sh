@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PS='localhost:3221,localhost:3222,localhost:3223,localhost:3224,localhost:3225,localhost:3226,localhost:3227,localhost:3228'
+PS='localhost:3221,localhost:3222,localhost:3223,localhost:3224,localhost:3225,localhost:3226,localhost:3227,localhost:3228,localhost:6221,localhost:6222,localhost:6223,localhost:6224,localhost:6225,localhost:6226,localhost:6227,localhost:6228'
 WORKER='localhost:2221,localhost:2222,localhost:2223,localhost:2224,localhost:2225,localhost:2226,localhost:2227,localhost:2228,localhost:4221,localhost:4222,localhost:4223,localhost:4224,localhost:4225,localhost:4226,localhost:4227,localhost:4228'
 PORT=5558
 

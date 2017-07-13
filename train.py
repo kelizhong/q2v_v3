@@ -21,8 +21,7 @@ import time
 import logbook as logging
 import tensorflow as tf
 import os
-# https://github.com/tensorflow/tensorflow/commit/ec1403e7dc2b919531e527d36d28659f60621c9e
-# os.environ['TF_CPP_MIN_VLOG_LEVEL']='3'
+
 import numpy as np
 import math
 from collections import defaultdict
@@ -38,7 +37,7 @@ from utils.data_util import prepare_train_pair_batch
 class Trainer(object):
     """query2vec model trainer"""
 
-    def __init__(self, ps_hosts='', worker_hosts='', model_dir='./data/models', job_type='worker', task_index=0,
+    def __init__(self, ps_hosts='', worker_hosts='', model_dir='./data/models', job_type='worker', model_name='q2v', task_index=0,
                  gpu=None, is_sync=False, raw_data_path=None, batch_size=128, display_freq=10, source_maxlen=None,
                  target_maxlen=None, top_words=None, vocabulary_data_dir=None, data_stream_port=None):
         """
@@ -70,13 +69,14 @@ class Trainer(object):
             the directory to store/load vocabulary data(vocabulary with most `top_words` common words and word counter)
         data_stream_port: int
             port for data zmq stream
+        model_name: model name, model will be stored in os.path.join(model_dir, model_name)
         """
         self.job_type = job_type
         self.ps_hosts = ps_hosts.split(",")
         self.worker_hosts = worker_hosts.split(",")
         self.task_index = task_index
         self.gpu = gpu
-        self.model_dir = model_dir
+        self.model_dir = os.path.join(model_dir, model_name)
         self.is_sync = is_sync
         self.raw_data_path = raw_data_path
         self.display_freq = display_freq
@@ -181,12 +181,10 @@ class Trainer(object):
                     logging.info("creating model for  worker:{}", self.task_index)
                     model = create_model(sess, FLAGS, model_name=FLAGS.model_name)
                 self._log_variable_info()
-                summary_op = tf.summary.merge_all()
                 init_op = tf.global_variables_initializer()
             sv = tf.train.Supervisor(is_chief=(self.task_index == 0),
                                      logdir=self.model_dir,
                                      init_op=init_op,
-                                     summary_op=summary_op,
                                      saver=model.saver,
                                      global_step=model.global_step,
                                      save_model_secs=60)
@@ -196,8 +194,8 @@ class Trainer(object):
                                             gpu_options=gpu_options,
                                             intra_op_parallelism_threads=16)
             with sv.prepare_or_wait_for_session(master=self.master, config=session_config) as sess:
-                # TODO andd tensorboard support
-                if self.task_index == 0 and self.is_sync:
+                # TODO add tensorboard support
+                if self.task_index == 0 and self.is_sync and self.job_type == 'worker':
                     # TODO and synchronize optimizer
                     sv.start_queue_runners(sess, [model.chief_queue_runner])
                     sess.run(model.init_token_op)
@@ -240,17 +238,23 @@ class Trainer(object):
                         # set zero timer and loss.
                         words_done, sents_done, loss = 0.0, 0.0, 0.0
 
-            sv.stop()
+                sv.stop()
 
 
 def main(_):
     setup_logger(FLAGS.log_file_name)
+    if FLAGS.debug:
+        # https://github.com/tensorflow/tensorflow/commit/ec1403e7dc2b919531e527d36d28659f60621c9e
+        os.environ['TF_CPP_MIN_VLOG_LEVEL'] = '3'
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpu if FLAGS.gpu else ''
+
     trainer = Trainer(raw_data_path=FLAGS.raw_data_path, vocabulary_data_dir=FLAGS.vocabulary_data_dir,
                       data_stream_port=FLAGS.data_stream_port, top_words=FLAGS.vocabulary_size,
                       source_maxlen=FLAGS.source_maxlen, target_maxlen=FLAGS.target_maxlen, job_type=FLAGS.job_type,
                       ps_hosts=FLAGS.ps_hosts, worker_hosts=FLAGS.worker_hosts, task_index=FLAGS.task_index,
                       gpu=FLAGS.gpu, model_dir=FLAGS.model_dir, is_sync=FLAGS.is_sync, batch_size=FLAGS.batch_size,
-                      display_freq=FLAGS.display_freq)
+                      display_freq=FLAGS.display_freq, model_name=FLAGS.model_name)
     trainer.train()
 
 

@@ -14,7 +14,7 @@ from tensorflow.contrib.tensorboard.plugins import projector
 
 class Inference(object):
 
-    def __init__(self, source_maxlen=30, batch_size=65536, min_words=-1):
+    def __init__(self, source_maxlen=sys.maxsize, batch_size=65536, min_words=-1):
         self.sess = tf.Session()
         self.model = self._init_model()
         self.batch_data = BatchDataTrigramHandler(self.vocabulary, batch_size=sys.maxsize, min_words=min_words)
@@ -31,19 +31,20 @@ class Inference(object):
         self.batch_data.clear_data_object()
         for each in inputs:
             sources, source_tokens, _, _ = self.batch_data.parse_and_insert_data_object(each, None)
-        source_tokens, source_lens = prepare_decode_batch(source_tokens)
+        source_tokens, source_lens = prepare_decode_batch(source_tokens, maxlen=self.source_maxlen)
         result = None
         if len(source_tokens) > 0:
             result = self.model.encode(self.sess, source_tokens, source_lens)
         return sources, result
 
-    def batch_encode(self, file):
-        model_path = os.path.join(FLAGS.model_dir, "embedding")
+    def visualize(self, file, tensor_name="item_embedding", proj_name="q2v"):
+        model_path = os.path.join(FLAGS.model_dir, 'visualize')
         writer = tf.summary.FileWriter(model_path, self.sess.graph)
         config = projector.ProjectorConfig()
         embed = config.embeddings.add()
-        embed.tensor_name = 'item_embedding'
-        embed.metadata_path = os.path.join(model_path, 'metadata.csv')
+        embed.tensor_name = tensor_name
+        meta_path = os.path.join(model_path, "%s.tsv" % proj_name)
+        embed.metadata_path = meta_path
         projector.visualize_embeddings(writer, config)
         sources = set()
         with open(file, 'r') as f:
@@ -76,7 +77,7 @@ class Inference(object):
         assign_op = item_embedding.assign(concat)
         self.sess.run(assign_op)
         saver = tf.train.Saver([item_embedding])
-        saver.save(self.sess, model_path, global_step=self.model.global_step)
+        saver.save(self.sess, os.path.join(model_path, "%s.embs" % proj_name))
 
     @property
     @memoized
@@ -85,7 +86,6 @@ class Inference(object):
         vocab = VocabularyFromCustomStringTrigram(FLAGS.vocabulary_data_dir).build_vocabulary_from_pickle()
         return vocab
 
-i = Inference(source_maxlen=FLAGS.source_maxlen, batch_size=2)
-i.batch_encode('source')
-#v = i.encode(["nike shoe men", "apple mac mini"])
-#print(cos_distance(v[0], v[1]))
+if __name__ == "__main__":
+    i = Inference(batch_size=2)
+    i.visualize('source')
