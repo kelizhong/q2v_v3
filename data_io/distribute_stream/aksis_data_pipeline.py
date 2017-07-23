@@ -1,6 +1,6 @@
 # coding=utf-8
 # pylint: disable=invalid-name, too-many-instance-attributes, too-many-arguments
-"""aksis data pipeline to start the raw_data_broker, data_ventilator_process,
+"""aksis data pieline to start the raw_data_broker, data_ventilator_process,
 parser_worker_process and collector_process"""
 from utils.network_util import local_ip
 from data_io.distribute_stream.aksis_raw_data_broker import AksisRawDataBroker
@@ -16,8 +16,6 @@ class AksisDataPipeline(object):
 
     Parameters
     ----------
-        data_dir : str
-            Data_dir for the aksis corpus data
         vocabulary_path: str
             Path for vocabulary from aksis corpus data
         top_words: int
@@ -54,22 +52,22 @@ class AksisDataPipeline(object):
         Send the CTRL+C signal will stop all the processes
     """
 
-    def __init__(self, data_dir, vocabulary_path, top_words, file_patterns, batch_size,
-                 worker_num=1, ip=None, num_epoch=65535,
-                 raw_data_frontend_port='5555', raw_data_backend_port='5556',
-                 collector_fronted_port='5557', collector_backend_port='5558'):
-        self.data_dir = data_dir
+    def __init__(self, vocabulary_path, top_words, file_patterns, batch_size,
+                 worker_num=1, ip=None, num_epoch=65535, words_list_file=None,
+                 rawdata_frontend_port=5555, rawdata_backend_port=5556,
+                 collector_fronted_port=5557, collector_backend_port=5558):
         self.vocabulary_path = vocabulary_path
         self.top_words = top_words
         self.ip = ip or local_ip()
-        self.raw_data_frontend_port = raw_data_frontend_port
-        self.raw_data_backend_port = raw_data_backend_port
+        self.rawdata_frontend_port = rawdata_frontend_port
+        self.rawdata_backend_port = rawdata_backend_port
         self.collector_fronted_port = collector_fronted_port
         self.collector_backend_port = collector_backend_port
         self.file_patterns = file_patterns
         self.batch_size = batch_size
         self.num_epoch = num_epoch
         self.worker_num = worker_num
+        self.words_list_file = words_list_file
 
     def start_collector_process(self, join=False):
         """start the collector process which collect the data from parser worker"""
@@ -83,28 +81,30 @@ class AksisDataPipeline(object):
             collector.join()
 
     def start_parser_worker_process(self):
-        """start the parser worker process which tokenize the corpus data and convert them to id"""
+        """start the parser worker process which tokenize the copus data and convert them to id"""
         for i in range(self.worker_num):
             worker = AksisParserWorker(self.ip, self.vocabulary_path, self.top_words, batch_size=self.batch_size,
-                                       frontend_port=self.raw_data_backend_port,
+                                       frontend_port=self.rawdata_backend_port,
                                        backend_port=self.collector_fronted_port,
+                                       words_list_file=self.words_list_file,
+                                       first_worker=(i==0),
                                        name="aksis_parser_worker_{}".format(i))
             worker.start()
 
     def start_data_ventilator_process(self):
         """start the ventilator process which read the corpus data"""
         for i, (file_pattern, dropout) in enumerate(self.file_patterns):
-            ventilator = AksisDataVentilatorProcess(file_pattern, self.data_dir, dropout=dropout,
-                                                    ip=self.ip, num_epoch=self.num_epoch,
-                                                    port=self.raw_data_frontend_port,
+            ventilator = AksisDataVentilatorProcess(file_pattern, dropout=dropout,
+                                                    ip=self.ip,
+                                                    port=self.rawdata_frontend_port,
                                                     name="aksis_ventilator_{}".format(i))
             ventilator.start()
 
     def start_raw_data_broker(self):
         """start the raw data broker between ventilator and parser worker process"""
         # TODO bind the random port not use the defined port
-        raw_data_broker = AksisRawDataBroker(self.ip, self.raw_data_frontend_port,
-                                             self.raw_data_backend_port)
+        raw_data_broker = AksisRawDataBroker(self.ip, self.rawdata_frontend_port,
+                                             self.rawdata_backend_port)
         raw_data_broker.start()
 
     def start_all(self):

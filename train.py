@@ -32,12 +32,13 @@ from helper.model_helper import create_model
 from utils.decorator_util import memoized
 from utils.log_util import setup_logger
 from utils.data_util import prepare_train_pair_batch
+from collections import OrderedDict
 
 
 class Trainer(object):
     """query2vec model trainer"""
 
-    def __init__(self, ps_hosts='', worker_hosts='', model_dir='./data/models', job_type='worker', model_name='q2v', task_index=0,
+    def __init__(self, config, ps_hosts='', worker_hosts='', model_dir='./data/models', job_type='worker', model_name='q2v', task_index=0,
                  gpu=None, is_sync=False, raw_data_path=None, batch_size=128, display_freq=10, source_maxlen=None,
                  target_maxlen=None, top_words=None, vocabulary_data_dir=None, data_stream_port=None):
         """
@@ -72,8 +73,8 @@ class Trainer(object):
         model_name: model name, model will be stored in os.path.join(model_dir, model_name)
         """
         self.job_type = job_type
-        self.ps_hosts = ps_hosts.split(",")
-        self.worker_hosts = worker_hosts.split(",")
+        self.ps_hosts = ps_hosts.split(",") if ps_hosts else list()
+        self.worker_hosts = worker_hosts.split(",") if worker_hosts else list()
         self.task_index = task_index
         self.gpu = gpu
         self.model_dir = os.path.join(model_dir, model_name)
@@ -87,6 +88,7 @@ class Trainer(object):
         self.top_words = top_words
         self.vocabulary_data_dir = vocabulary_data_dir
         self.data_stream_port = data_stream_port
+        self.words_list_path = config['words_list_path']
 
     @property
     @memoized
@@ -111,6 +113,8 @@ class Trainer(object):
     def cluster(self):
         """represents the set of processes that participate in a distributed TensorFlow computation"""
         assert self.job_type != 'single', "Not support cluster for single machine training"
+        assert len(self.ps_hosts) > 0, "No parameter server are found"
+        assert len(self.worker_hosts) > 0, "No worker_hosts are found"
         cluster = tf.train.ClusterSpec({"ps": self.ps_hosts, "worker": self.worker_hosts})
         return cluster
 
@@ -152,7 +156,7 @@ class Trainer(object):
     def data_local_stream(self):
         """product data by parsing the local file"""
         data_stream = AksisDataStream(self.vocabulary_data_dir, top_words=self.top_words,
-                                      batch_size=self.batch_size,
+                                      batch_size=self.batch_size, words_list_file=self.words_list_path,
                                       raw_data_path=self.raw_data_path).generate_batch_data()
         return data_stream
 
@@ -209,9 +213,9 @@ class Trainer(object):
                 step_time, loss = 0.0, 0.0
                 words_done, sents_done = 0, 0
                 data_stream = self.data_stream
-                for sources, targets in data_stream:
+                for step, (_, _source_tokens, _, _target_tokens) in enumerate(data_stream):
                     start_time = time.time()
-                    sources, source_lens, targets, target_lens = prepare_train_pair_batch(sources, targets,
+                    sources, source_lens, targets, target_lens = prepare_train_pair_batch(_source_tokens, _target_tokens,
                                                                                           source_maxlen=self.source_maxlen,
                                                                                           target_maxlen=self.target_maxlen)
                     # Get a batch from training parallel data
@@ -253,8 +257,8 @@ def main(_):
         os.environ['TF_CPP_MIN_VLOG_LEVEL'] = '3'
 
     os.environ['CUDA_VISIBLE_DEVICES'] = FLAGS.gpu if FLAGS.gpu else ''
-
-    trainer = Trainer(raw_data_path=FLAGS.raw_data_path, vocabulary_data_dir=FLAGS.vocabulary_data_dir,
+    config = OrderedDict(sorted(FLAGS.__flags.items()))
+    trainer = Trainer(config, raw_data_path=FLAGS.raw_data_path, vocabulary_data_dir=FLAGS.vocabulary_data_dir,
                       data_stream_port=FLAGS.data_stream_port, top_words=FLAGS.vocabulary_size,
                       source_maxlen=FLAGS.source_maxlen, target_maxlen=FLAGS.target_maxlen, job_type=FLAGS.job_type,
                       ps_hosts=FLAGS.ps_hosts, worker_hosts=FLAGS.worker_hosts, task_index=FLAGS.task_index,

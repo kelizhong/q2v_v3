@@ -8,10 +8,10 @@ import random
 from nltk import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from utils.cache import RandomSet
-from enum import Enum, unique
+from itertools import combinations
 import numpy as np
 from itertools import chain
-from config.config import end_token
+from config.config import end_token, unk_token
 
 wn_lemmatizer = WordNetLemmatizer()
 
@@ -264,3 +264,43 @@ def prepare_decode_batch(seqs, maxlen=sys.maxsize):
     for idx, s_x in enumerate(seqs):
         x[idx, :lengths[idx]] = s_x
     return x, lengths
+
+
+def data_encoding(data, vocabulary, ngram=3, return_data=True):
+    data_index = list()
+    if data and len(data.strip()) > 0:
+        words = tokenize(data)
+        for word in words:
+            if word in vocabulary:
+                data_index.extend(words_index_lookup(word, vocabulary))
+            else:
+                words_list = ngram_tokenize_word(word, ngram)
+                data_index.extend(words_index_lookup(words_list, vocabulary))
+
+    result = data_index, data if return_data else data_index
+
+    return result
+
+
+def ngram_tokenize_word(word, ngram):
+    word = re.sub('[^a-z0-9#.\'-, ]+', '', word.strip().lower())
+    words_list = [''.join(ele) for ele in find_ngrams('#' + word + '#', ngram)]
+    return words_list
+
+
+def words_index_lookup(words_list, vocabulary):
+    if not isinstance(words_list, list):
+        words_list = [words_list]
+    words_index = [vocabulary[d] if d in vocabulary else unk_token for d in words_list]
+    return words_index
+
+
+def query_pair_generator(files):
+    for sentence in sentence_gen(files):
+        items = sentence.strip().lower().split("\t")
+        items = items[1:]
+        for item in combinations(items, 2):
+            if len(item[0].split()) < 2 or len(item[1].split()) < 2 or item[0] in item[1] or item[1] in item[0]:
+                continue
+            yield item[0], item[1]
+            yield item[1], item[0]

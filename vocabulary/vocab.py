@@ -3,6 +3,7 @@
 import os
 import logbook as logging
 import sys
+import codecs
 from itertools import product
 from vocabulary.ventilator import VentilatorProcess
 from vocabulary.worker import WorkerProcess
@@ -29,17 +30,42 @@ class VocabularyBase(object):
             word frequency counter name
     """
 
-    def __init__(self, vocabulary_data_dir, top_words, special_words,
+    def __init__(self, vocabulary_data_dir, top_words, special_words, vocabulary_name='vocab',
                  words_freq_counter_name="words_freq_counter"):
         self.vocabulary_data_dir = vocabulary_data_dir
         self.top_words = top_words
         self.special_words = special_words
         self.words_freq_counter_path = os.path.join(self.vocabulary_data_dir, words_freq_counter_name)
-        self.vocab_path = os.path.join(self.vocabulary_data_dir, "vocab_%d" % top_words)
+        self.vocab_path = os.path.join(self.vocabulary_data_dir, "%s_%d" % (vocabulary_name, top_words))
 
     @property
     def special_words_size(self):
         return len(self.special_words)
+
+    @property
+    def vocabulary_size(self):
+        if os.path.isfile(self.vocab_path):
+            vocab = load_pickle_object(self.vocab_path)
+            return len(vocab)
+        else:
+            logging.warn("Vocabulary {} has not been built", self.vocab_path)
+            return 0
+
+    def build_vocabulary_from_words_list(self, words_list_file=None):
+        if os.path.isfile(self.vocab_path) and words_list_file is None:
+            vocab = load_pickle_object(self.vocab_path)
+        else:
+            vocab = dict()
+            vocab.update(self.special_words)
+            with codecs.open(words_list_file, encoding='utf-8', errors='ignore') as f:
+                for word in f:
+                    word = word.strip().lower()
+                    if word not in vocab:
+                        vocab[word] = len(vocab)
+                    if len(vocab) > self.top_words - 1:
+                        break
+            save_obj_pickle(vocab, self.vocab_path, True)
+        return vocab
 
     def build_vocabulary_from_pickle(self):
         """load vocabulary from pickle
@@ -66,7 +92,7 @@ class VocabularyBase(object):
             for word, _ in words_freq_list:
                 if 0 < self.top_words <= len(vocab):
                     break
-                if word not in self.special_words:
+                if word not in vocab:
                     vocab[word] = len(vocab)
             save_obj_pickle(vocab, self.vocab_path, True)
         else:
@@ -76,13 +102,20 @@ class VocabularyBase(object):
         return vocab
 
 
+class VocabularyFromWordList(VocabularyBase):
+    def __init__(self, vocabulary_data_dir, top_words=40000, special_words=dict(), vocabulary_name='wordslist'):
+        super(VocabularyFromWordList, self).__init__(vocabulary_data_dir, top_words, special_words,
+                                                     vocabulary_name=vocabulary_name)
+
+
 class VocabularyFromLocalFile(VocabularyBase):
     """create vocabulary from local file"""
 
-    def __init__(self, vocabulary_data_dir, top_words=40000, special_words=dict(),
+    def __init__(self, vocabulary_data_dir, top_words=40000, special_words=dict(), vocabulary_name='localvocab',
                  words_freq_counter_name="words_freq_counter"):
         super(VocabularyFromLocalFile, self).__init__(vocabulary_data_dir, top_words, special_words,
-                                                      words_freq_counter_name)
+                                                      vocabulary_name=vocabulary_name,
+                                                      words_freq_counter_name=words_freq_counter_name)
 
     def build_words_frequency_counter(self, raw_data_path, tokenizer=None):
         """
@@ -95,24 +128,25 @@ class VocabularyFromLocalFile(VocabularyBase):
           tokenizer: tokenizer to tokenize the sentence in raw data
         """
         if not os.path.isfile(self.words_freq_counter_path):
-            logging.info("Building words frequency counter {} from data {}", self.words_freq_counter_path, raw_data_path)
+            print("Building words frequency counter %s from data %s" % (self.words_freq_counter_path, raw_data_path))
 
             def _word_generator():
                 with open(raw_data_path, 'r+') as f:
                     for num, line in enumerate(f):
                         if num % 100000 == 0:
-                            logging.info("  processing line {}", num)
+                            print("  processing line %d" % num)
                         try:
                             tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
                         except Exception as e:
-                            logging.error("Tokenize failure: {}", line)
+                            print("Tokenize failure: " + line)
                             continue
                         for word in tokens:
                             yield word
 
             counter = Counter(_word_generator())
             save_obj_pickle(counter, self.words_freq_counter_path, True)
-            logging.info('Vocabulary file created')
+            print('Vocabulary file created')
+        return self
 
     def build_vocabulary_from_pickle(self, raw_data_path=None):
         # Load vocabulary
@@ -153,10 +187,11 @@ class VocabFromZMQ(VocabularyBase):
 
     def __init__(self, vocabulary_data_dir, special_words=dict(), sentence_gen=sentence_gen, workers_num=1,
                  top_words=100000,
-                 ip='127.0.0.1', ventilator_port=5555, collector_port=5556,
+                 ip='127.0.0.1', ventilator_port=5555, collector_port=5556, vocabulary_name='zmqvocab',
                  overwrite=True, words_freq_counter_name="words_freq_counter"):
         super(VocabFromZMQ, self).__init__(vocabulary_data_dir, top_words, special_words,
-                                           words_freq_counter_name)
+                                           vocabulary_name=vocabulary_name,
+                                           words_freq_counter_name=words_freq_counter_name)
         self.sentence_gen = sentence_gen
         self.workers_num = workers_num
         self.top_words = top_words
@@ -192,6 +227,7 @@ class VocabFromZMQ(VocabularyBase):
 
         logging.info("store vocabulary with most_common_words file, vocabulary size: {}", len(counter))
         save_obj_pickle(counter, self.words_freq_counter_path, self.overwrite)
+        return self
 
     def _terminate_process(self, pool):
         for p in pool:
@@ -213,19 +249,21 @@ class VocabularyFromCustomStringTrigram(VocabularyBase):
             special vocabulary symbols(begin of sentence, end of sentence, unknown word) - we always put them at the start.
     """
 
-    def __init__(self, vocabulary_data_dir, top_words=sys.maxsize, special_words=dict(),
+    def __init__(self, vocabulary_data_dir, top_words=sys.maxsize, special_words=dict(), vocabulary_name='stringvocab',
                  words_freq_counter_name="words_freq_counter"):
         super(VocabularyFromCustomStringTrigram, self).__init__(vocabulary_data_dir, top_words, special_words,
-                                                                words_freq_counter_name)
+                                                                vocabulary_name=vocabulary_name,
+                                                                words_freq_counter_name=words_freq_counter_name)
 
     def build_words_frequency_counter(self, string=None):
         string = string if string else 'abcdefghijklmnopqrstuvwxyz1234567890#.&\\'
         if not os.path.isfile(self.words_freq_counter_path):
-            logging.info("Building words frequency counter %s from custom string %s" % (self.words_freq_counter_path, string))
+            print("Building words frequency counter %s from custom string %s" % (self.words_freq_counter_path, string))
 
             counter = Counter(product(string, repeat=3))
             save_obj_pickle(counter, self.words_freq_counter_path, True)
-            logging.info('Vocabulary file created')
+            print('Vocabulary file created')
+        return self
 
     def build_vocabulary_from_pickle(self, string=None):
         # Load vocabulary

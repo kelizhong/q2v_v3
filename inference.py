@@ -45,7 +45,7 @@ class Inference(object):
             sources, source_tokens, _, _ = self.batch_data.parse_and_insert_data_object(each, None)
         source_tokens, source_lens = prepare_decode_batch(source_tokens, maxlen=self.source_maxlen)
         result = None
-        if len(source_tokens) > 0:
+        if source_tokens and len(source_tokens) > 0:
             result = self.model.encode(self.sess, source_tokens, source_lens)
         return sources, result
 

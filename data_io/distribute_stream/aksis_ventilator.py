@@ -1,22 +1,19 @@
 # coding=utf-8
 # pylint: disable=too-many-instance-attributes, too-many-arguments
 """ventilator that read/produce the corpus data"""
-import os
 from multiprocessing import Process
-import fnmatch
+import glob
 import logbook as logging
 import zmq
 from zmq.decorators import socket
 from utils.appmetric_util import AppMetric
-from utils.data_util import query_title_score_generator_from_aksis_data
+from utils.data_util import query_pair_generator
 
 
 class AksisDataVentilatorProcess(Process):
     """Process to read the corpus data
     Parameters
     ----------
-        data_dir : str
-            Data_dir for the aksis corpus data
         file_pattern: tuple
             File pattern use to distinguish different corpus, every file pattern will start
             a ventilator process.
@@ -33,18 +30,18 @@ class AksisDataVentilatorProcess(Process):
             process name
     """
 
-    def __init__(self, file_pattern, data_dir,
-                 num_epoch=65535, dropout=-1, ip='127.0.0.1', port=5555,
-                 metric_interval=30, name='VentilatorProcess'):
+    def __init__(self, file_pattern,
+                 num_epoch=65535, dropout=-1, ip='127.0.0.1', port='5555',
+                 metric_interval=30, neg_number=4, name='VentilatorProcess'):
         Process.__init__(self)
         self.file_pattern = file_pattern
-        self.data_dir = data_dir
         self.num_epoch = num_epoch
         self.dropout = float(dropout)
         # pylint: disable=invalid-name
         self.ip = ip
         self.port = port
         self.metric_interval = metric_interval
+        self.neg_number = neg_number
         self.name = name
 
     # pylint: disable=arguments-differ, no-member
@@ -67,12 +64,11 @@ class AksisDataVentilatorProcess(Process):
 
     def get_data_stream(self):
         """data stream generate the query, title data"""
-        data_files = fnmatch.filter(os.listdir(self.data_dir), self.file_pattern)
+        data_files = glob.glob(self.file_pattern)
 
         if len(data_files) <= 0:
-            raise FileNotFoundError("no files are found for file pattern {} in {}".format(self.file_pattern,
-                                                                                          self.data_dir))
-        action_files = [os.path.join(self.data_dir, filename) for filename in data_files]
+            raise FileNotFoundError("no files are found for file pattern {}".format(self.file_pattern))
+        # action_files = [os.path.join(self.data_dir, filename) for filename in data_files]
 
-        for source, target in query_title_score_generator_from_aksis_data(action_files, self.dropout):
+        for source, target in query_pair_generator(data_files):
             yield source, target

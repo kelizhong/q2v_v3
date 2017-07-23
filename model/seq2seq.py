@@ -61,11 +61,9 @@ class Seq2SeqModel(object):
             config['min_learning_rate'],  # min_lr_rate.
             tf.train.exponential_decay(config['learning_rate'], self.global_step, config['decay_steps'], config['lr_decay_factor']))
 
-        self.latest_train_losses = list()
         self.is_sync = config['is_sync']
 
         self.max_gradient_norm = config['max_gradient_norm']
-
 
         self.dtype = tf.float16 if config['use_fp16'] else tf.float32
         self.keep_prob_placeholder = tf.placeholder(self.dtype, shape=[], name='keep_prob')
@@ -133,8 +131,6 @@ class Seq2SeqModel(object):
     def init_embedding(self):
         logging.info("initializing shared word embedding")
         # Initialize embeddings to have variance=1.
-        sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
-        initializer = tf.random_uniform_initializer(-sqrt3, sqrt3, dtype=self.dtype)
         with tf.variable_scope('shared'):
             self.embeddings = tf.get_variable(name='embedding', shape=[self.vocabulary_size, self.embedding_size],
                                               initializer=tf.contrib.layers.xavier_initializer(), dtype=self.dtype)
@@ -142,7 +138,7 @@ class Seq2SeqModel(object):
     def build_encoder(self):
 
         with tf.variable_scope('encoder', dtype=self.dtype) as scope:
-            logging.info("building bidirectional encoder..")
+
             # Embedded_inputs: [batch_size, time_step, embedding_size]
             encoder_inputs_embedded = tf.nn.embedding_lookup(
                 params=self.embeddings, ids=self.encoder_inputs)
@@ -155,6 +151,7 @@ class Seq2SeqModel(object):
             encoder_inputs_embedded = input_layer(encoder_inputs_embedded)
 
             if self.bidirectional:
+                logging.info("building bidirectional encoder..")
                 fw_encoder_cell = self.build_encoder_cell()
                 bw_encoder_cell = self.build_encoder_cell()
                 self.encoder_outputs, self.encoder_last_state = tf.nn.bidirectional_dynamic_rnn(
@@ -186,7 +183,7 @@ class Seq2SeqModel(object):
                 self.encoder_outputs, self.encoder_last_state = tf.nn.dynamic_rnn(
                     cell=encoder_cell, inputs=encoder_inputs_embedded,
                     sequence_length=self.encoder_inputs_length, dtype=self.dtype,
-                    time_major=False, parallel_iterations=16,scope=scope)
+                    time_major=False, parallel_iterations=16, scope=scope)
                 output_size = encoder_cell.output_size
 
             self.encoder_state_size = output_size
